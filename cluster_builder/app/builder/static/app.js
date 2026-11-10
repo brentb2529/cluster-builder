@@ -63,10 +63,12 @@
     $("#build-error").hidden = true;
     try { await api("api/build", {}); refresh(); } catch (err) { $("#build-error").textContent = err.message; $("#build-error").hidden = false; }
   });
-  $("#reset-all").addEventListener("click", async () => {
-    if (!confirm("Forget all machines and progress? The nodes themselves are not touched; only this page's memory of them.")) return;
-    await api("api/reset", {}); refresh();
-  });
+  // Confirmations are in-page (a native confirm() looks like a pop-up from "an embedded page" inside Home Assistant).
+  const resetAllAsk = (show) => { $("#reset-all").hidden = show; $("#reset-all-confirm").hidden = !show; };
+  $("#reset-all").addEventListener("click", () => resetAllAsk(true));
+  $("#reset-all-no").addEventListener("click", () => resetAllAsk(false));
+  $("#reset-all-yes").addEventListener("click", async () => { resetAllAsk(false); await api("api/reset", {}); refresh(); });
+  let confirmNode = null;  // node whose "Forget this machine" is awaiting a yes
 
   const ago = (t) => { if (!t) return ""; const s = Math.round(state.now - t); return s < 90 ? `${s} s ago` : s < 5400 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`; };
   const esc = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -87,13 +89,18 @@
         <details><summary class="msg">log</summary><pre>${(n.log || []).slice(-40).map((l) => `${new Date(l[0] * 1000).toLocaleTimeString()} ${esc(l[1])} ${esc(l[2])}`).join("\n")}</pre></details>
         <div class="tools">
           ${n.installed && !n.allow_reinstall ? `<button data-act="allow_reinstall" data-node="${esc(ns.name)}">Allow reinstall</button>` : ""}
-          ${m ? `<button data-act="reset" data-node="${esc(ns.name)}">Forget this machine</button>` : ""}
+          ${m && confirmNode !== ns.name ? `<button data-act="reset" data-node="${esc(ns.name)}">Forget this machine</button>` : ""}
+          ${m && confirmNode === ns.name ? `<span class="confirm">Forget the machine assigned to ${esc(ns.name)}? Only if you are reinstalling it.
+            <button class="danger" data-act="reset-yes" data-node="${esc(ns.name)}">Yes, forget it</button> <button data-act="reset-no" data-node="${esc(ns.name)}">Cancel</button></span>` : ""}
           <a class="msg" href="api/preview/${esc(ns.name)}" target="_blank" rel="noopener">what it gets</a>
         </div></div>`;
     }).join("");
     document.querySelectorAll("#node-cards button").forEach((b) => b.addEventListener("click", async () => {
-      if (b.dataset.act === "reset" && !confirm(`Forget the machine assigned to ${b.dataset.node}? Do this only if you are reinstalling it.`)) return;
-      await api(`api/node/${b.dataset.node}/${b.dataset.act}`, {}); refresh();
+      const act = b.dataset.act;
+      if (act === "reset") { confirmNode = b.dataset.node; render(state); return; }
+      if (act === "reset-no") { confirmNode = null; render(state); return; }
+      confirmNode = null;
+      await api(`api/node/${b.dataset.node}/${act === "reset-yes" ? "reset" : act}`, {}); refresh();
     }));
   };
 
