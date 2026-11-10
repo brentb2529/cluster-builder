@@ -1,0 +1,28 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint-addon:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add-on linter
+        uses: frenck/action-addon-linter@v2
+        with:
+          path: ./cluster_builder
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements_test.txt
+      - run: ruff check cluster_builder/app tests && ruff format --check cluster_builder/app tests
+      - run: pytest -q
+      - name: First-boot script parses
+        run: bash -n cluster_builder/app/builder/firstboot.sh

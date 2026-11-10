@@ -134,7 +134,7 @@ async def run_build(state: State) -> None:
         log = await _run(
             ASSISTANT,
             "prepare-iso",
-            str(state.downloads / PVE_ISO_FILE),
+            str(provided(PVE_ISO_FILE) or state.downloads / PVE_ISO_FILE),
             "--fetch-from",
             "http",
             "--url",
