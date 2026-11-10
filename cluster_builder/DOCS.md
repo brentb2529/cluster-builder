@@ -1,0 +1,75 @@
+# Cluster Builder
+
+Turns three empty mini PCs into a Proxmox VE cluster that runs Home Assistant OS in a VM protected by
+replication and automatic failover. You fill in one page, write one USB stick, and boot each machine
+from it. The add-on answers the Proxmox installer's questions over your network, then tells each node
+what to do on its first boot: fix the network, join the cluster, create the Home Assistant VM, set up
+the one-minute copies. The page shows every node's progress.
+
+## What you need
+
+- Three small PCs with an NVMe drive each, two network ports preferred (one for the house, one for a
+  private switch between the three). 16 GB RAM is comfortable.
+- Three free addresses on your network, outside the router's DHCP range.
+- One USB stick of 4 GB or more.
+- Internet, for the Proxmox installer (1.7 GB) and the Home Assistant OS image (0.4 GB).
+
+## Steps
+
+1. **Install this add-on** on the Home Assistant you have today and open it from the sidebar.
+2. **Fill in the page.** Most fields are pre-filled from your Home Assistant: time zone, router, DNS,
+   suggested node addresses. Choose a root password for the nodes (you will type it once into Cluster
+   Guard later). The Home Assistant VM gets a MAC address: give it a DHCP reservation in your router so
+   the new Home Assistant takes over your old one's address. Save.
+3. **Build.** Downloads the installer and the OS image and writes the stick image. A few minutes.
+4. **Write the stick** with Raspberry Pi Imager (Use custom) or Etcher. Everything on the stick is erased.
+5. **Boot each machine from the stick.** Cable it to the house network first. It installs itself and
+   **turns off**; remove the stick, turn it on again, and it finishes alone. The first machine you boot
+   becomes the first node and gets the Home Assistant VM. Boot the others any time.
+6. When all three say **Done**, open `https://<first node>:8006` (user `root`), see three nodes, then
+   open `http://homeassistant.local:8123` and restore your backup on the Welcome screen. Add the
+   Cluster Guard integration in the restored Home Assistant.
+
+The stick erases whatever machine boots from it. It only answers machines this page has not installed
+yet, and a machine that was already installed is refused until you press *Allow reinstall* on it.
+Keep it out of machines you care about anyway.
+
+## How it works
+
+- The stick is the official Proxmox ISO prepared with `proxmox-auto-install-assistant`, pointed at this
+  add-on's port 8808 with a token. The installer sends its network cards' addresses; the add-on assigns
+  the next free node and replies with that node's answer file (from DHCP, ZFS on the NVMe, root password
+  hash, the add-on's SSH key, power off when done).
+- After the install, Proxmox runs the first-boot script it fetched from the add-on: static address on
+  the port that got DHCP, the other port as the private cluster link, no-subscription repositories,
+  updates; the first node creates the cluster, the others take turns joining (over SSH with the add-on's
+  key, which is removed afterwards); the first node creates the Home Assistant VM from the official
+  image as a high-availability resource, and every other node adds a one-minute replication job for it.
+- Every step is reported back to the add-on, which is what the page shows. Each node also keeps
+  `/var/log/cluster-builder.log`.
+
+## Advanced
+
+- **Address the machines use to reach this add-on**: pre-filled with this Home Assistant's address.
+  Change it only if the new machines sit on another network.
+- **Cluster address / LAN port MAC / Link port MAC**: for setups where the cluster talks on a different
+  network than the node's management address, or when you want to pin which port is which.
+- **Extra commands at first boot**: a bash script run on every node after the network and packages are
+  done, before the cluster is formed. The node's name is its hostname.
+- **Extra VM options**: appended to `qm create`. The default is `--machine q35 --cpu host`.
+- **No internet, or a different installer**: put `proxmox-ve.iso` and `haos.qcow2.xz` in the `share/cluster_builder`
+  folder (Samba or the File editor) and the build uses them instead of downloading. Files there are also served to
+  the nodes at `<add-on address>/files/<token>/<name>`, so the Home Assistant OS image field can point at one.
+
+## If something goes wrong
+
+- A node shows *Failed*: read its log on the page, or on the node at `/var/log/cluster-builder.log`.
+  Press *Forget this machine*, boot it from the stick again.
+- A machine boots from the stick but nothing appears here: it could not reach this add-on. Check that it
+  got an address from your router and that port 8808 of this Home Assistant is open on your network.
+- The machine does not boot from the stick: use the boot menu key (F7 on MeLE Quieter, F11 or F12 on
+  most others) and choose the USB stick.
+
+## Options
+
+`log_level`: how much the add-on writes to its log.

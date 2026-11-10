@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cluster Builder</title>
+<link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>Cluster Builder</h1>
+    <p class="lede">Three empty mini PCs, one USB stick, and this page. When it says <b>Done</b> three times, you have a
+      Proxmox cluster with a Home Assistant VM that restarts on another machine if one dies.</p>
+  </header>
+
+  <section id="step1" class="card">
+    <h2><span class="num">1</span> Tell it about your house</h2>
+    <form id="settings" autocomplete="off">
+      <div class="grid">
+        <label>Cluster name <input name="cluster_name" required pattern="[A-Za-z0-9-]+"></label>
+        <label>Domain <input name="domain" required></label>
+        <label>Router (gateway) <input name="gateway" required placeholder="192.168.2.1"></label>
+        <label>DNS server <input name="dns" required placeholder="192.168.2.1"></label>
+        <label>Network size <select name="prefix"><option value="24">/24 (255.255.255.0)</option><option value="23">/23</option><option value="22">/22</option><option value="16">/16</option></select></label>
+        <label>Time zone <input name="timezone" required placeholder="America/New_York"></label>
+        <label>Root password for the nodes <input name="password" type="password" placeholder="(kept from last time)" minlength="8"></label>
+        <label>Again <input name="password2" type="password" minlength="8"></label>
+      </div>
+      <p class="hint">The root password is what you will type once into Cluster Guard later, and into any node's web page
+        (https://&lt;node address&gt;:8006). It is stored here only as a hash.</p>
+
+      <h3>The three nodes</h3>
+      <table class="nodes">
+        <thead><tr><th>Name</th><th>Address</th><th>Private link address</th></tr></thead>
+        <tbody id="nodes-rows"></tbody>
+      </table>
+      <p class="hint">Give each node a free address on your network, outside the router's DHCP range, and set the second
+        network port of every box on its own little switch for the private link (the link addresses can stay as they are).</p>
+
+      <h3>The Home Assistant VM</h3>
+      <div class="grid">
+        <label class="check"><input type="checkbox" name="vm_enabled"> Create it on the first node, protected from the start</label>
+        <label>Memory (MB) <input name="vm_memory" type="number" min="2048" step="1024"></label>
+        <label>CPU cores <input name="vm_cores" type="number" min="1" max="16"></label>
+        <label>Disk (GB) <input name="vm_disk_gb" type="number" min="32"></label>
+        <label>Its MAC address <input name="vm_mac" class="mono" pattern="[0-9A-Fa-f:]{17}"></label>
+      </div>
+      <p class="hint">Give that MAC address a DHCP reservation in your router now, so the new Home Assistant keeps the
+        address your old one has. Home Assistant OS will boot on the first node, download its core, and show its Welcome
+        screen, where you restore your backup.</p>
+
+      <details>
+        <summary>Advanced (leave alone unless you know why)</summary>
+        <div class="grid">
+          <label>Address the machines use to reach this add-on <input name="builder_url" required placeholder="http://192.168.2.250:8808"></label>
+          <label>Proxmox installer ISO <input name="iso_url"></label>
+          <label>Home Assistant OS image (blank = latest) <input name="image_url"></label>
+          <label>Install disk (udev DEVNAME glob) <input name="disk_filter"></label>
+          <label>Country <input name="country"></label>
+          <label>Keyboard <input name="keyboard"></label>
+          <label>Extra VM options for qm create <input name="vm_qm_args"></label>
+        </div>
+        <table class="nodes">
+          <thead><tr><th>Node</th><th>Cluster address (if not the node address)</th><th>LAN port MAC</th><th>Link port MAC</th></tr></thead>
+          <tbody id="nodes-adv"></tbody>
+        </table>
+        <label class="wide">Extra commands run on every node at first boot (bash)
+          <textarea name="extra_firstboot" rows="4" spellcheck="false"></textarea></label>
+        <p class="hint">Normally none of this is needed: the port you cable to your house network becomes the node's
+          address, and the other port becomes the private link.</p>
+      </details>
+      <div class="actions">
+        <button type="submit" class="primary">Save</button>
+        <span id="save-msg" class="msg"></span>
+      </div>
+    </form>
+  </section>
+
+  <section id="step2" class="card">
+    <h2><span class="num">2</span> Build the stick image</h2>
+    <p>Downloads the Proxmox installer and the Home Assistant OS image (about 2 GB) and makes one installer image
+      that works for all three machines. Needs internet and <span id="free"></span> free.</p>
+    <ul id="problems" class="problems"></ul>
+    <div class="actions">
+      <button id="build" class="primary">Build</button>
+      <span id="build-status" class="msg"></span>
+    </div>
+    <div class="bar"><div id="build-bar"></div></div>
+    <pre id="build-error" class="error" hidden></pre>
+  </section>
+
+  <section id="step3" class="card">
+    <h2><span class="num">3</span> Write it to a USB stick</h2>
+    <p>Any stick of 4 GB or more; everything on it is erased.</p>
+    <div class="actions">
+      <a id="dl" class="button" download>Download cluster-builder.iso</a>
+      <span class="msg">then write it with <a href="https://www.raspberrypi.com/software/" target="_blank" rel="noopener">Raspberry Pi Imager</a>
+        (Use custom) or <a href="https://etcher.balena.io/" target="_blank" rel="noopener">Etcher</a>.</span>
+    </div>
+    <p class="hint">Etcher can also take the image straight from this address (Flash from URL): <code id="iso-url"></code></p>
+  </section>
+
+  <section id="step4" class="card">
+    <h2><span class="num">4</span> Boot each machine from the stick</h2>
+    <p>Cable each box to your house network, plug in the stick, power it on. If it does not boot from the stick, press the
+      boot-menu key as it starts (F7 on MeLE, F11 or F12 on most others) and pick the stick. <b>The stick erases the
+      machine it boots on</b>, so only plug it into the new machines.</p>
+    <p>Each machine installs itself, <b>turns itself off</b>, and waits for you to remove the stick and turn it back on.
+      Then it finishes on its own. The first box you boot becomes the first node; do the others whenever you like, together
+      or one at a time.</p>
+    <div id="node-cards" class="cards"></div>
+    <div class="actions">
+      <button id="reset-all" class="danger">Start over (forget all machines)</button>
+    </div>
+  </section>
+
+  <section id="step5" class="card">
+    <h2><span class="num">5</span> Move in</h2>
+    <ol>
+      <li>Open Proxmox at <code id="pve-url"></code> (user <code>root</code>, the password from step 1) and confirm three green nodes.</li>
+      <li>Open <code id="ha-url">http://homeassistant.local:8123</code> and restore your Home Assistant backup on the Welcome screen.</li>
+      <li>In the restored Home Assistant, add the <b>Cluster Guard</b> integration with a node's address and the root password, once.</li>
+    </ol>
+  </section>
+</main>
+<script src="static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+:root { --bg: #f4f5f7; --card: #fff; --ink: #1b1f24; --muted: #5b6470; --line: #dde1e6; --accent: #0b6e4f; --accent-ink: #fff; --warn: #b45309; --bad: #b42318; --good: #0b6e4f; }
+@media (prefers-color-scheme: dark) { :root { --bg: #111418; --card: #1a1f26; --ink: #e8ebef; --muted: #9aa4b1; --line: #2c333d; --accent: #2fb380; --accent-ink: #06130d; --warn: #f0a04b; --bad: #f08080; --good: #2fb380; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 960px; margin: 0 auto; padding: 16px; }
+header { margin: 8px 0 16px; }
+h1 { margin: 0 0 4px; font-size: 26px; }
+h2 { font-size: 18px; margin: 0 0 10px; display: flex; align-items: center; gap: 10px; }
+h3 { font-size: 15px; margin: 18px 0 6px; }
+.lede { color: var(--muted); margin: 0; }
+.num { display: inline-flex; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); align-items: center; justify-content: center; font-size: 14px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 14px; }
+label { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--muted); }
+label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--ink); grid-column: 1 / -1; }
+label.wide { grid-column: 1 / -1; margin-top: 8px; }
+input, select, textarea { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+input[readonly] { opacity: .8; }
+.mono, code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+table.nodes { width: 100%; border-collapse: collapse; margin-top: 4px; }
+table.nodes th { text-align: left; font-weight: 500; font-size: 13px; color: var(--muted); padding: 2px 6px; }
+table.nodes td { padding: 3px 6px; }
+table.nodes input { width: 100%; }
+.hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+details { margin-top: 14px; }
+summary { cursor: pointer; color: var(--muted); }
+.actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+button, .button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 8px 14px; cursor: pointer; text-decoration: none; }
+button.primary, .button { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.danger { color: var(--bad); }
+button:disabled, .button.disabled { opacity: .5; cursor: default; pointer-events: none; }
+.msg { color: var(--muted); font-size: 13px; }
+.bar { height: 8px; background: var(--line); border-radius: 4px; margin-top: 10px; overflow: hidden; }
+#build-bar { height: 100%; width: 0; background: var(--accent); transition: width .5s; }
+.error { color: var(--bad); white-space: pre-wrap; font-size: 13px; }
+.problems { color: var(--warn); margin: 6px 0; padding-left: 20px; font-size: 14px; }
+.problems:empty { display: none; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-top: 12px; }
+.node { border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.node h4 { margin: 0 0 4px; font-size: 16px; display: flex; justify-content: space-between; align-items: baseline; }
+.node .phase { font-weight: 600; }
+.node.done .phase { color: var(--good); }
+.node.failed .phase { color: var(--bad); }
+.node.active .phase { color: var(--warn); }
+.node .msg { display: block; margin-top: 2px; word-break: break-word; }
+.node .machine { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.node details { margin-top: 8px; }
+.node pre { font-size: 12px; max-height: 220px; overflow: auto; background: var(--bg); padding: 8px; border-radius: 6px; margin: 6px 0 0; white-space: pre-wrap; }
+.node .tools { display: flex; gap: 8px; margin-top: 8px; }
+.node .tools button { padding: 4px 10px; font-size: 13px; }
+ol li { margin: 4px 0; }
