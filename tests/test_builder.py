@@ -254,3 +254,13 @@ async def test_vm_ip_from_the_first_node_starts_the_move(state: State, sockets, 
 
 async def _noop(started: list[str], ip: str) -> None:
     started.append(ip)
+
+
+def test_older_saved_settings_gain_new_vm_keys(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("SUPERVISOR_TOKEN", "t")
+    (tmp_path / "state.json").write_text(json.dumps({"settings": {"vm": {"enabled": True, "memory": 512}}}))
+    st = State(tmp_path)
+    assert st.settings["vm"]["move_in"] is True and st.settings["vm"]["memory"] == 512
+    st.update_settings({"vm": {"move_in": False}})
+    assert st.settings["vm"]["move_in"] is False
+    assert State(tmp_path).settings["vm"]["move_in"] is False

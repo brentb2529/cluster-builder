@@ -143,6 +143,9 @@ class State:
                 for k in self.d:
                     if k in saved:
                         self.d[k] = saved[k] if k != "settings" else {**default_settings(), **saved[k]}
+                # new settings keys (this version) under older saved settings
+                self.d["settings"]["vm"] = {**default_settings()["vm"], **self.d["settings"].get("vm", {})}
+                self.d["move_in"] = {**{"phase": "", "msg": "", "ip": "", "updated": 0}, **self.d.get("move_in", {})}
             except Exception:
                 _LOGGER.exception("state.json unreadable; starting fresh")
         s = self.d["secrets"]
