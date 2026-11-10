@@ -201,7 +201,10 @@ async def test_supervisor_backup_for_the_move(state: State, sockets, monkeypatch
 
     calls: list[str] = []
 
-    async def addons(_):
+    async def addons(_):  # as the Supervisor answers an add-on that only has the backup role
+        return web.Response(status=403, text="403: Forbidden")
+
+    async def sup_info(_):
         return web.json_response(
             {"result": "ok", "data": {"addons": [{"slug": "core_ssh"}, {"slug": "local_cluster_builder"}]}}
         )
@@ -225,6 +228,7 @@ async def test_supervisor_backup_for_the_move(state: State, sockets, monkeypatch
 
     app = web.Application()
     app.router.add_get("/addons", addons)
+    app.router.add_get("/supervisor/info", sup_info)
     app.router.add_post("/backups/new/partial", new_partial)
     app.router.add_get("/jobs/j1", job)
     app.router.add_get("/backups/s1/download", download)
