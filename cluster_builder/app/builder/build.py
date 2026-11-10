@@ -129,9 +129,9 @@ async def run_build(state: State) -> None:
         b["step"] = "writing the USB stick image (a few minutes)"
         state.save()
         out = state.downloads / ISO_NAME
-        tmp = state.downloads / (ISO_NAME + ".part")
+        tmp = state.downloads / "cluster-builder.tmp.iso"
         tmp.unlink(missing_ok=True)
-        await _run(
+        log = await _run(
             ASSISTANT,
             "prepare-iso",
             str(state.downloads / PVE_ISO_FILE),
@@ -144,6 +144,9 @@ async def run_build(state: State) -> None:
             "--output",
             str(tmp),
         )
+        _LOGGER.info("prepare-iso: %s", log.strip()[-800:])
+        if not tmp.exists():
+            raise BuildError(f"the installer image was not written:\n{log[-1500:]}")
         tmp.replace(out)
         b.update({"status": "done", "step": "ready", "progress": 1.0, "iso": str(out), "built_at": time.time()})
         state.save()
