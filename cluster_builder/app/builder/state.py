@@ -300,7 +300,7 @@ class State:
     def reset_all(self) -> None:
         for name in list(self.nodes):
             self.reset_node(name)
-        self.cluster.update({"created": False, "joining": None, "vm_created": False})
+        self.cluster.update({"created": False, "joining": None, "joining_since": 0, "vm_created": False})
         self.save()
 
     def match_machine(self, macs: list[str], info: dict[str, Any]) -> tuple[str | None, str]:
