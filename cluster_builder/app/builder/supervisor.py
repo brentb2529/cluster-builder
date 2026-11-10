@@ -45,13 +45,22 @@ async def _api(session: aiohttp.ClientSession, method: str, path: str, **kw: Any
         return body.get("data", {}) if isinstance(body, dict) else {}
 
 
+async def _installed_addons(session: aiohttp.ClientSession) -> list[str]:
+    """Slugs of the installed add-ons; /addons needs a bigger role than backup, /supervisor/info does not."""
+    for path, key in (("/addons", "addons"), ("/supervisor/info", "addons")):
+        try:
+            return [str(a["slug"]) for a in (await _api(session, "GET", path)).get(key, []) if a.get("slug")]
+        except SupervisorError as err:
+            _LOGGER.info("%s; trying the next way to list add-ons", err)
+    raise SupervisorError("could not list the installed add-ons")
+
+
 async def make_backup(
     session: aiohttp.ClientSession, password: str, dest: Path, progress: Callable[[str, float], None]
 ) -> dict[str, Any]:
     """A backup of everything here except this add-on (its downloads would bloat it), encrypted with the
     one-time move-in password; downloaded to dest and then deleted from the Supervisor."""
-    addons = [a["slug"] for a in (await _api(session, "GET", "/addons")).get("addons", [])]
-    addons = [a for a in addons if not a.endswith(OWN_SLUG_SUFFIX)]
+    addons = [a for a in await _installed_addons(session) if not a.endswith(OWN_SLUG_SUFFIX)]
     job = await _api(
         session,
         "POST",
