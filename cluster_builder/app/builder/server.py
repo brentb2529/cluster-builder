@@ -358,7 +358,7 @@ async def lan_file(request: web.Request) -> web.StreamResponse:
     if request.match_info["token"] != state.secrets["answer_token"]:
         raise web.HTTPForbidden()
     name = request.match_info["name"]
-    if "/" in name or name.startswith("."):
+    if "/" in name or name.startswith(".") or name.startswith("move-in"):  # the backup goes to the VM only
         raise web.HTTPNotFound()
     p = build.provided(name) or state.downloads / name
     if not p.is_file():

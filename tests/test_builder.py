@@ -111,6 +111,8 @@ async def test_lan_routes(state: State, sockets) -> None:
         (state.downloads / "x.img").write_bytes(b"img")
         assert (await c.get(f"/files/{token}/x.img")).status == 200
         assert (await c.get(f"/files/{token}/../state.json")).status in (403, 404)
+        (state.downloads / "move-in.tar").write_bytes(b"secret")
+        assert (await c.get(f"/files/{token}/move-in.tar")).status == 404
         assert (await c.get(f"/iso/{token}/cluster-builder.iso")).status == 200
 
 
