@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2
+
+- Move-in: the add-on looks for the new Home Assistant on port 8123 **and** port 80 (Home Assistant OS 18
+  serves it on 80), tolerates the "preparing Home Assistant" page shown during the first boot, and knows
+  a restored Home Assistant 2026 by its missing onboarding API. Both waits are an hour now.
+
 ## 0.1.1
 
 - New: **Move this Home Assistant onto it**. Build takes a backup of this Home Assistant; once the new VM

@@ -27,7 +27,8 @@ the one-minute copies. The page shows every node's progress.
    **turns off**; remove the stick, turn it on again, and it finishes alone. The first machine you boot
    becomes the first node and gets the Home Assistant VM. Boot the others any time.
 6. When all three say **Done**, open `https://<first node>:8006` (user `root`), see three nodes, then
-   open `http://homeassistant.local:8123` and restore your backup on the Welcome screen. Add the
+   open `http://homeassistant.local:8123` (plain `http://homeassistant.local` on Home
+   Assistant OS 18) and restore your backup on the Welcome screen. Add the
    Cluster Guard integration in the restored Home Assistant.
 
 The stick erases whatever machine boots from it. It only answers machines this page has not installed

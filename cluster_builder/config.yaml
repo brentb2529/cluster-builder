@@ -1,5 +1,5 @@
 name: Cluster Builder
-version: 0.1.1
+version: 0.1.2
 slug: cluster_builder
 description: Build a three-node Proxmox cluster for Home Assistant from one USB stick, no command line.
 url: https://github.com/brentb2529/cluster-builder

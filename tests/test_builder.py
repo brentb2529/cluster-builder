@@ -150,10 +150,20 @@ class FakeWelcome:
         self.user_done = False
         self.uploaded = b""
         self.restore: dict | None = None
+        self.landing = 0  # polls answered with the "preparing Home Assistant" HTML page first
+        self.gone_when_done = False  # HA 2026: no onboarding API at all once onboarded (404), /api/ says 401
 
     def app(self) -> web.Application:
         async def status(_):
+            if self.landing > 0:
+                self.landing -= 1
+                return web.Response(text="<html>Preparing Home Assistant</html>", content_type="text/html")
+            if self.user_done and self.gone_when_done:
+                raise web.HTTPNotFound()
             return web.json_response([{"step": "user", "done": self.user_done}, {"step": "core_config", "done": False}])
+
+        async def api_root(_):
+            return web.json_response({"message": "Unauthorized"}, status=401)
 
         async def upload(request):
             assert request.query["agent_id"] == "hassio.local"
@@ -169,6 +179,7 @@ class FakeWelcome:
 
         app = web.Application()
         app.router.add_get("/api/onboarding", status)
+        app.router.add_get("/api/", api_root)
         app.router.add_post("/api/onboarding/backup/upload", upload)
         app.router.add_post("/api/onboarding/backup/restore", restore)
         return app
@@ -196,6 +207,37 @@ async def test_move_in_restores_through_the_welcome_screen(state: State, sockets
     async with TestServer(welcome.app()) as srv:
         await move_in.run(state, f"{srv.host}:{srv.port}")
     assert state.d["move_in"]["phase"] == "failed" and "already set up" in state.d["move_in"]["msg"]
+
+
+async def test_move_in_handles_the_landing_page_and_a_gone_onboarding_api(state: State, sockets, monkeypatch) -> None:
+    """HA OS first shows a 'preparing' HTML page; HA 2026 drops the onboarding API once onboarded (404)."""
+    from builder import move_in
+
+    monkeypatch.setattr(move_in, "POLL", 0.01)
+    monkeypatch.setattr(move_in, "SETTLE", 0.01)
+    (state.downloads / "move-in.tar").write_bytes(b"tar" * 10)
+    state.build["move_in_backup"] = {"addons": [], "folders": []}
+    welcome = FakeWelcome()
+    welcome.landing = 2
+    welcome.gone_when_done = True
+    async with TestServer(welcome.app()) as srv:
+        await move_in.run(state, f"{srv.host}:{srv.port}")
+    assert state.d["move_in"]["phase"] == "done", state.d["move_in"]
+    assert welcome.restore is not None
+
+    # an onboarded HA 2026 (404 on the onboarding API, 401 on /api/) is "already set up", not "not up yet"
+    async with TestServer(welcome.app()) as srv:
+        await move_in.run(state, f"{srv.host}:{srv.port}")
+    assert state.d["move_in"]["phase"] == "failed" and "already set up" in state.d["move_in"]["msg"]
+
+
+def test_move_in_candidates() -> None:
+    from builder.move_in import candidates
+
+    assert candidates("10.0.0.5:9000") == ["http://10.0.0.5:9000"]
+    assert candidates("10.0.0.5", None) == ["http://10.0.0.5:8123", "http://10.0.0.5:80"]
+    assert candidates("10.0.0.5", 80) == ["http://10.0.0.5:8123", "http://10.0.0.5:80"]
+    assert candidates("10.0.0.5", 8443) == ["http://10.0.0.5:8123", "http://10.0.0.5:80", "http://10.0.0.5:8443"]
 
 
 async def test_supervisor_backup_for_the_move(state: State, sockets, monkeypatch) -> None:

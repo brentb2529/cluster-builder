@@ -46,6 +46,14 @@ async def _api(session: aiohttp.ClientSession, method: str, path: str, **kw: Any
         return body.get("data", {}) if isinstance(body, dict) else {}
 
 
+async def core_port(session: aiohttp.ClientSession) -> int | None:
+    """The port this Home Assistant listens on (/core/info is open to every add-on role); a restored copy keeps it."""
+    try:
+        return int((await _api(session, "GET", "/core/info")).get("port") or 0) or None
+    except (SupervisorError, aiohttp.ClientError, ValueError, TypeError):
+        return None
+
+
 async def _installed_addons(session: aiohttp.ClientSession) -> list[str]:
     """Slugs of the installed add-ons; /addons needs a bigger role than backup, /supervisor/info does not."""
     for path, key in (("/addons", "addons"), ("/supervisor/info", "addons")):
