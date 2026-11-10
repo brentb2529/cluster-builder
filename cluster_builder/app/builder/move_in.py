@@ -22,6 +22,7 @@ POLL = 15.0
 SETTLE = 30.0
 WAIT_HA = 60 * 60
 WAIT_RESTORE = 60 * 60
+WAIT_UPLOAD = 15 * 60
 RESUMABLE = ("waiting_ha", "uploading", "restoring")
 PORTS = (8123, 80)  # Home Assistant's classic port, and the port Home Assistant OS 18 serves it on
 
@@ -106,16 +107,25 @@ async def run(state: State, ip: str) -> None:
 
             size_mb = backup.stat().st_size / 1e6
             log("uploading", f"sending your backup ({size_mb:.0f} MB) to {base}")
-            with backup.open("rb") as f:
-                data = aiohttp.FormData()
-                data.add_field("file", f, filename=BACKUP_FILE, content_type="application/x-tar")
-                async with session.post(
-                    f"{base}/api/onboarding/backup/upload", params={"agent_id": AGENT}, data=data
-                ) as r:
-                    if r.status not in (200, 201):
-                        log("failed", f"the new Home Assistant refused the backup: {r.status} {(await r.text())[:200]}")
-                        return
-                    backup_id = (await r.json(content_type=None))["backup_id"]
+            # right after its first start Home Assistant's backup manager is still "blocked" for a while and
+            # answers 500 "Backup manager busy": keep trying, it clears within minutes
+            deadline = time.time() + WAIT_UPLOAD
+            while True:
+                with backup.open("rb") as f:
+                    data = aiohttp.FormData()
+                    data.add_field("file", f, filename=BACKUP_FILE, content_type="application/x-tar")
+                    async with session.post(
+                        f"{base}/api/onboarding/backup/upload", params={"agent_id": AGENT}, data=data
+                    ) as r:
+                        if r.status in (200, 201):
+                            backup_id = (await r.json(content_type=None))["backup_id"]
+                            break
+                        text = (await r.text())[:200]
+                if not (r.status >= 500 and "busy" in text.lower()) or time.time() > deadline:
+                    log("failed", f"the new Home Assistant refused the backup: {r.status} {text}")
+                    return
+                log("uploading", f"the new Home Assistant is still getting ready ({text.strip()}); trying again")
+                await asyncio.sleep(POLL)
             info = state.build.get("move_in_backup") or {}
             body = {
                 "backup_id": backup_id,

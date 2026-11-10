@@ -150,6 +150,7 @@ class FakeWelcome:
         self.user_done = False
         self.uploaded = b""
         self.restore: dict | None = None
+        self.busy = 0  # uploads refused with 500 'Backup manager busy' first
         self.landing = 0  # polls answered with the "preparing Home Assistant" HTML page first
         self.gone_when_done = False  # HA 2026: no onboarding API at all once onboarded (404), /api/ says 401
 
@@ -169,6 +170,9 @@ class FakeWelcome:
 
         async def upload(request):
             assert request.query["agent_id"] == "hassio.local"
+            if self.busy > 0:  # a fresh HA's backup manager is "blocked" for a while after start
+                self.busy -= 1
+                return web.Response(text="Can't upload backup file: Backup manager busy: blocked", status=500)
             reader = await request.multipart()
             part = await reader.next()
             self.uploaded = await part.read()
@@ -221,6 +225,7 @@ async def test_move_in_handles_the_landing_page_and_a_gone_onboarding_api(state:
     state.build["move_in_backup"] = {"addons": [], "folders": []}
     welcome = FakeWelcome()
     welcome.landing = 2
+    welcome.busy = 2
     welcome.gone_when_done = True
     async with TestServer(welcome.app()) as srv:
         await move_in.run(state, f"{srv.host}:{srv.port}")
