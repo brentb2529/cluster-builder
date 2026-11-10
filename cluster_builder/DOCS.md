@@ -46,6 +46,8 @@ devices. USB radios do not follow a backup; that is what Radio Guard's restore o
 
 If the first node cannot see the VM's address (no guest agent yet, odd network), step 5 lets you type it in and
 try again. Untick the option to get the plain Welcome screen and restore a backup by hand.
+The new Home Assistant keeps the uploaded move-in backup in its backup list (a few MB); delete it there
+whenever you like.
 
 ## How it works
 
