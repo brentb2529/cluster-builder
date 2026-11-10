@@ -28,7 +28,17 @@ done
 # shellcheck disable=SC1091
 . /run/cb.env
 
-wait_quorum() { for i in $(seq 1 60); do pvecm status 2>/dev/null | grep -q "Quorate: *Yes" && return 0; sleep 3; done; return 1; }
+# the cluster filesystem (pmxcfs) has its own quorum view, and that is what qm/pvesh go by. Right after
+# "pvecm create" it can sit with no cluster at all (it was restarted before corosync was up) while corosync
+# is already quorate; a restart of pve-cluster reconnects it.
+wait_quorum() {
+  for i in $(seq 1 60); do
+    grep -q '"quorate": 1' /etc/pve/.members 2>/dev/null && return 0
+    case "$i" in 10|30) pvecm status 2>/dev/null | grep -q "Quorate: *Yes" && systemctl restart pve-cluster ;; esac
+    sleep 3
+  done
+  return 1
+}
 mac_if() { for d in /sys/class/net/*; do [ -e "$d/device" ] || continue; [ "$(cat "$d/address" 2>/dev/null)" = "$1" ] && basename "$d" && return 0; done; return 1; }
 
 # --- network: the NIC the installer used (DHCP) becomes static vmbr0; cluster and link addresses on top
