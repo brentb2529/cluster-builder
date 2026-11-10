@@ -30,6 +30,7 @@ button.primary, .button { background: var(--accent); color: var(--accent-ink); b
 button.danger { color: var(--bad); }
 .confirm { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--bad); }
 .confirm button { padding: 4px 10px; }
+.confirm[hidden] { display: none; }
 button:disabled, .button.disabled { opacity: .5; cursor: default; pointer-events: none; }
 .msg { color: var(--muted); font-size: 13px; }
 .bar { height: 8px; background: var(--line); border-radius: 4px; margin-top: 10px; overflow: hidden; }

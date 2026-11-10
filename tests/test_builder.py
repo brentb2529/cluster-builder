@@ -113,6 +113,7 @@ async def test_lan_routes(state: State, sockets) -> None:
 
 async def test_ui_routes(state: State, sockets) -> None:
     async with TestClient(TestServer(server.make_ui_app(state, dev=True))) as c:
+        assert (await c.get("/static/app.js")).headers["Cache-Control"] == "no-store"
         r = await c.get("/api/state")
         d = await r.json()
         assert d["has_password"] and d["root_hash"] is None and "secrets" not in d and d["iso_ready"]

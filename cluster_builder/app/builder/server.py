@@ -191,9 +191,15 @@ async def ui_preview(request: web.Request) -> web.Response:
     )
 
 
+async def _no_store(request: web.Request, response: web.StreamResponse) -> None:
+    """Never let the browser cache the page or its script: an add-on update must show the new UI at once."""
+    response.headers["Cache-Control"] = "no-store"
+
+
 def make_ui_app(state: State, dev: bool = False) -> web.Application:
     app = web.Application(middlewares=[ingress_only], client_max_size=1 << 20)
     app["state"] = state
+    app.on_response_prepare.append(_no_store)
     app["dev"] = dev
     app.router.add_get("/", ui_index)
     app.router.add_get("/api/state", ui_state)
