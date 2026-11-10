@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -16,6 +15,7 @@ import aiohttp
 _LOGGER = logging.getLogger(__name__)
 SUP = os.environ.get("CB_SUPERVISOR_URL", "http://supervisor")
 BACKUP_FILE = "move-in.tar"
+BACKUP_NAME = "Cluster Builder move-in"
 FOLDERS = ["ssl", "share", "media", "addons/local"]
 OWN_SLUG_SUFFIX = "cluster_builder"
 
@@ -61,35 +61,30 @@ async def make_backup(
     """A backup of everything here except this add-on (its downloads would bloat it), encrypted with the
     one-time move-in password; downloaded to dest and then deleted from the Supervisor."""
     addons = [a for a in await _installed_addons(session) if not a.endswith(OWN_SLUG_SUFFIX)]
-    job = await _api(
+    # a stray one from an interrupted build is only clutter
+    for b in (await _api(session, "GET", "/backups")).get("backups", []):
+        if b.get("name") == BACKUP_NAME and b.get("slug"):
+            await _api(session, "DELETE", f"/backups/{b['slug']}")
+    progress("backing up this Home Assistant for the move (a few minutes)", 0.0)
+    # in the foreground: the backup role may create backups but not read the job that would track one
+    made = await _api(
         session,
         "POST",
         "/backups/new/partial",
         json={
-            "name": "Cluster Builder move-in",
+            "name": BACKUP_NAME,
             "password": password,
             "compressed": True,
             "homeassistant": True,
             "addons": addons,
             "folders": FOLDERS,
-            "background": True,
         },
+        timeout=aiohttp.ClientTimeout(total=3 * 3600),
     )
-    job_id = job.get("job_id")
-    if not job_id:
-        raise SupervisorError("the Supervisor did not start the backup")
-    slug = ""
-    for _ in range(720):  # up to an hour
-        j = await _api(session, "GET", f"/jobs/{job_id}")
-        if j.get("errors"):
-            raise SupervisorError("backup failed: " + "; ".join(str(e.get("message", e)) for e in j["errors"]))
-        if j.get("done"):
-            slug = str(j.get("reference") or "")
-            break
-        progress("backing up this Home Assistant for the move", float(j.get("progress") or 0) / 100)
-        await asyncio.sleep(5)
+    slug = str(made.get("slug") or "")
     if not slug:
-        raise SupervisorError("the backup took more than an hour")
+        raise SupervisorError("the Supervisor did not make the backup")
+    progress("downloading the backup", 0.0)
     tmp = dest.with_suffix(".part")
     async with session.get(f"{SUP}/backups/{slug}/download", headers=_headers()) as r:
         if r.status != 200:
