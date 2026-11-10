@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 from pathlib import Path
 
+import aiohttp
 import pytest
+from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from builder import answers, server
@@ -136,3 +139,118 @@ def test_state_survives_restart(tmp_path: Path, state: State) -> None:
     assert again.secrets["answer_token"] == state.secrets["answer_token"]
     assert again.settings["vm"]["mac"] == state.settings["vm"]["mac"]
     assert json.loads(again.path.read_text())["nodes"]["pve1"]["phase"] == "waiting"
+
+
+class FakeWelcome:
+    """The onboarding-only part of a fresh Home Assistant: status, backup upload, info and restore."""
+
+    def __init__(self) -> None:
+        self.user_done = False
+        self.uploaded = b""
+        self.restore: dict | None = None
+
+    def app(self) -> web.Application:
+        async def status(_):
+            return web.json_response([{"step": "user", "done": self.user_done}, {"step": "core_config", "done": False}])
+
+        async def upload(request):
+            assert request.query["agent_id"] == "hassio.local"
+            reader = await request.multipart()
+            part = await reader.next()
+            self.uploaded = await part.read()
+            return web.json_response({"backup_id": "abc123"}, status=201)
+
+        async def restore(request):
+            self.restore = await request.json()
+            self.user_done = True  # "restarted with the restored config"
+            return web.Response()
+
+        app = web.Application()
+        app.router.add_get("/api/onboarding", status)
+        app.router.add_post("/api/onboarding/backup/upload", upload)
+        app.router.add_post("/api/onboarding/backup/restore", restore)
+        return app
+
+
+async def test_move_in_restores_through_the_welcome_screen(state: State, sockets, monkeypatch) -> None:
+    from builder import move_in
+
+    monkeypatch.setattr(move_in, "POLL", 0.01)
+    monkeypatch.setattr(move_in, "SETTLE", 0.01)
+    (state.downloads / "move-in.tar").write_bytes(b"tar" * 100)
+    state.build["move_in_backup"] = {"addons": ["core_ssh"], "folders": ["share", "ssl"]}
+    welcome = FakeWelcome()
+    async with TestServer(welcome.app()) as srv:
+        await move_in.run(state, f"{srv.host}:{srv.port}")
+    assert state.d["move_in"]["phase"] == "done", state.d["move_in"]
+    assert welcome.uploaded == b"tar" * 100
+    assert welcome.restore["backup_id"] == "abc123"
+    assert welcome.restore["password"] == state.secrets["move_in_password"]
+    assert welcome.restore["restore_addons"] == ["core_ssh"] and welcome.restore["restore_folders"] == ["share", "ssl"]
+    assert welcome.restore["restore_database"] is True
+
+    # an already set-up Home Assistant must not be touched
+    welcome.user_done = True
+    async with TestServer(welcome.app()) as srv:
+        await move_in.run(state, f"{srv.host}:{srv.port}")
+    assert state.d["move_in"]["phase"] == "failed" and "already set up" in state.d["move_in"]["msg"]
+
+
+async def test_supervisor_backup_for_the_move(state: State, sockets, monkeypatch) -> None:
+    from builder import supervisor
+
+    calls: list[str] = []
+
+    async def addons(_):
+        return web.json_response(
+            {"result": "ok", "data": {"addons": [{"slug": "core_ssh"}, {"slug": "local_cluster_builder"}]}}
+        )
+
+    async def new_partial(request):
+        body = await request.json()
+        calls.append(f"partial {body['addons']} {body['homeassistant']} {body['password']}")
+        return web.json_response({"result": "ok", "data": {"job_id": "j1"}})
+
+    async def job(_):
+        return web.json_response(
+            {"result": "ok", "data": {"done": True, "reference": "s1", "errors": [], "progress": 100}}
+        )
+
+    async def download(_):
+        return web.Response(body=b"backup-bytes")
+
+    async def delete(_):
+        calls.append("deleted s1")
+        return web.json_response({"result": "ok", "data": {}})
+
+    app = web.Application()
+    app.router.add_get("/addons", addons)
+    app.router.add_post("/backups/new/partial", new_partial)
+    app.router.add_get("/jobs/j1", job)
+    app.router.add_get("/backups/s1/download", download)
+    app.router.add_delete("/backups/s1", delete)
+    async with TestServer(app) as srv:
+        monkeypatch.setattr(supervisor, "SUP", f"http://{srv.host}:{srv.port}")
+        monkeypatch.setenv("SUPERVISOR_TOKEN", "t")
+        async with aiohttp.ClientSession() as session:
+            info = await supervisor.make_backup(session, "pw", state.downloads / "move-in.tar", lambda *_: None)
+    assert (state.downloads / "move-in.tar").read_bytes() == b"backup-bytes"
+    assert info["addons"] == ["core_ssh"] and info["bytes"] == 12
+    assert calls == ["partial ['core_ssh'] True pw", "deleted s1"]
+
+
+async def test_vm_ip_from_the_first_node_starts_the_move(state: State, sockets, monkeypatch) -> None:
+    from builder import server as srv_mod
+
+    started: list[str] = []
+    monkeypatch.setattr(srv_mod.move_in, "run", lambda st, ip: _noop(started, ip))
+    s1 = state.node_secret("pve1")
+    async with TestClient(TestServer(srv_mod.make_lan_app(state))) as c:
+        await c.post(f"/status/pve1/{s1}", json={"phase": "vm_ip", "msg": "192.168.1.50"})
+        await asyncio.sleep(0)
+    assert started == ["192.168.1.50"] and state.d["move_in"]["ip"] == "192.168.1.50"
+    assert "MOVE_IN=" in answers.env_for(state, "pve1")
+
+
+async def _noop(started: list[str], ip: str) -> None:
+    started.append(ip)

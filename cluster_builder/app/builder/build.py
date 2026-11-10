@@ -14,7 +14,7 @@ from pathlib import Path
 
 import aiohttp
 
-from . import answers
+from . import answers, supervisor
 from .state import HAOS_IMAGE_FALLBACK, HAOS_RELEASES_API, State
 
 _LOGGER = logging.getLogger(__name__)
@@ -106,6 +106,18 @@ async def run_build(state: State) -> None:
         base = s["builder_url"].rstrip("/")
         token = state.secrets["answer_token"]
         async with aiohttp.ClientSession(headers={"User-Agent": "cluster-builder"}) as session:
+            if s["vm"]["enabled"] and s["vm"].get("move_in"):
+                b["step"] = "backing up this Home Assistant for the move"
+                b["move_in_backup"] = None
+                state.save()
+
+                def _bp(step: str, frac: float) -> None:
+                    b["step"], b["progress"] = step, frac
+                    state.save()
+
+                b["move_in_backup"] = await supervisor.make_backup(
+                    session, state.secrets["move_in_password"], state.downloads / supervisor.BACKUP_FILE, _bp
+                )
             if s["vm"]["enabled"]:
                 url = s["image_url"] or await _latest_haos_url(session)
                 if url.startswith(base + "/files/"):

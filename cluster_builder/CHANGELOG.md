@@ -2,6 +2,8 @@
 
 ## 0.1.1
 
+- New: **Move this Home Assistant onto it**. Build takes a backup of this Home Assistant; once the new VM
+  shows its Welcome screen the add-on restores it there and tells you when to shut the old machine down.
 - Fixed: the first node removed the build key from the cluster before the other nodes had joined, so
   their joins failed. The key now stays until the last node is in, and that node removes it for all.
 - A failed join is reported at once with its error, instead of a quorum timeout minutes later.

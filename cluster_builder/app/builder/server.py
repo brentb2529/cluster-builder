@@ -14,7 +14,7 @@ from typing import Any
 import aiohttp
 from aiohttp import web
 
-from . import answers, build
+from . import answers, build, move_in
 from .state import State
 
 _LOGGER = logging.getLogger(__name__)
@@ -173,6 +173,23 @@ async def ui_download(request: web.Request) -> web.StreamResponse:
     )
 
 
+async def ui_move_in(request: web.Request) -> web.Response:
+    """Start (or retry) the move-in, optionally with an address the node could not find."""
+    state = _state(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    ip = str(body.get("ip") or state.d["move_in"].get("ip") or "").strip()
+    if not ip:
+        raise web.HTTPBadRequest(text="the VM's address is not known yet")
+    state.d["move_in"]["ip"] = ip
+    state.save()
+    if not start_move_in(state, ip):
+        raise web.HTTPConflict(text="a move-in is running")
+    return web.json_response({"ok": True})
+
+
 async def ui_preview(request: web.Request) -> web.Response:
     """What a node would get: answer file, first-boot script, environment (secrets blanked)."""
     state = _state(request)
@@ -207,6 +224,7 @@ def make_ui_app(state: State, dev: bool = False) -> web.Application:
     app.router.add_post("/api/build", ui_build)
     app.router.add_post("/api/node/{node}/{action}", ui_node_action)
     app.router.add_post("/api/reset", ui_reset_all)
+    app.router.add_post("/api/move_in", ui_move_in)
     app.router.add_get("/api/preview/{node}", ui_preview)
     app.router.add_get("/download/" + build.ISO_NAME, ui_download)
     app.router.add_static("/static", STATIC)
@@ -289,7 +307,25 @@ async def lan_status(request: web.Request) -> web.Response:
     phase = str(body.get("phase", "")).strip()[:40] or "unknown"
     msg = str(body.get("msg", ""))[:500]
     state.log(name, phase, msg)
+    if phase == "vm_ip" and msg:
+        start_move_in(state, msg)
     return web.Response(text="ok")
+
+
+def start_move_in(state: State, ip: str) -> bool:
+    """Run the move-in in the background (one at a time)."""
+    task = getattr(state, "move_in_task", None)
+    if task is not None and not task.done():
+        return False
+    state.move_in_task = asyncio.create_task(move_in.run(state, ip))  # type: ignore[attr-defined]
+    return True
+
+
+def resume_move_in(state: State) -> None:
+    """After an add-on restart, pick up a move-in that was under way."""
+    m = state.d["move_in"]
+    if m.get("phase") in move_in.RESUMABLE and m.get("ip"):
+        start_move_in(state, m["ip"])
 
 
 async def lan_join(request: web.Request) -> web.Response:

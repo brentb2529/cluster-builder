@@ -160,6 +160,31 @@ if [ "$VM_ENABLED" = 1 ]; then
     ha-manager config 2>/dev/null | grep -q "^vm:$VMID" || ha-manager add "vm:$VMID" --state started --max_restart 1 --max_relocate 1
     ha-manager set "vm:$VMID" --state started
     say vm_created "VM $VMID ($VM_NAME) is a failover resource; MAC $VM_MAC"
+    if [ "${MOVE_IN:-0}" = 1 ]; then
+      # the add-on restores the backup through the new Home Assistant's Welcome screen; it needs the VM's address.
+      # Home Assistant OS runs the QEMU guest agent; until it is up, look the VM's MAC up on the bridge instead.
+      say vm_wait "waiting for the Home Assistant VM to get an address"
+      VMIP=""; mac_lc=$(echo "$VM_MAC" | tr 'A-F' 'a-f')
+      for i in $(seq 1 160); do
+        VMIP=$(qm agent "$VMID" network-get-interfaces 2>/dev/null | python3 -c '
+import json, sys
+for i in json.load(sys.stdin):
+    for a in i.get("ip-addresses", []):
+        ip = a.get("ip-address", "")
+        if a.get("ip-address-type") == "ipv4" and not ip.startswith("127."):
+            print(ip); raise SystemExit' 2>/dev/null || true)
+        if [ -z "$VMIP" ]; then
+          br_ip=$(ip -4 -o addr show "$VM_BRIDGE" | awk '{print $4}' | cut -d/ -f1 | head -1)
+          if [ -n "$br_ip" ]; then
+            for h in $(seq 1 254); do ping -c1 -W1 "${br_ip%.*}.$h" >/dev/null 2>&1 & done; wait
+            VMIP=$(ip neigh show | awk -v m="$mac_lc" 'tolower($0) ~ "lladdr " m {print $1; exit}')
+          fi
+        fi
+        [ -n "$VMIP" ] && break
+        sleep 15
+      done
+      if [ -n "$VMIP" ]; then say vm_ip "$VMIP"; else say vm_wait "the VM got no address in 40 minutes; enter it on the page under Move in"; fi
+    fi
   else
     for i in $(seq 1 240); do pvesh get /cluster/resources --type vm --output-format json 2>/dev/null | grep -q "\"vmid\":$VMID" && break; sleep 15; done
     JOB="$VMID-$NODE_INDEX"

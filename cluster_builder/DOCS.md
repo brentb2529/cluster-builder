@@ -34,6 +34,18 @@ The stick erases whatever machine boots from it. It only answers machines this p
 yet, and a machine that was already installed is refused until you press *Allow reinstall* on it.
 Keep it out of machines you care about anyway.
 
+## Moving this Home Assistant onto the cluster
+
+Tick **Move this Home Assistant onto it** (step 1, on by default on Home Assistant OS). Build then first takes a
+full backup of this Home Assistant (everything except this add-on), encrypted with a one-time key the add-on
+keeps. When the first node has created the VM and Home Assistant OS shows its Welcome screen, the add-on sends
+that backup in through the Welcome screen's own restore and waits for the restart. Step 5 then says **shut this
+machine down**: for a few minutes two identical Home Assistants exist, and only one of them should talk to your
+devices. USB radios do not follow a backup; that is what Radio Guard's restore onto the new adapters is for.
+
+If the first node cannot see the VM's address (no guest agent yet, odd network), step 5 lets you type it in and
+try again. Untick the option to get the plain Welcome screen and restore a backup by hand.
+
 ## How it works
 
 - The stick is the official Proxmox ISO prepared with `proxmox-auto-install-assistant`, pointed at this

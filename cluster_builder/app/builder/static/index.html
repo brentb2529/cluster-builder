@@ -45,7 +45,11 @@
         <label>CPU cores <input name="vm_cores" type="number" min="1" max="16"></label>
         <label>Disk (GB) <input name="vm_disk_gb" type="number" min="32"></label>
         <label>Its MAC address <input name="vm_mac" class="mono" pattern="[0-9A-Fa-f:]{17}"></label>
+        <label class="check"><input type="checkbox" name="vm_move_in"> Move this Home Assistant onto it</label>
       </div>
+      <p class="hint" id="movein-hint">With the move ticked, Build first takes a full backup of this Home Assistant (everything but this add-on).
+        When the new VM boots its Welcome screen, the add-on restores that backup into it, and step 5 tells you
+        when to shut this machine down. Without it, the new Home Assistant shows its Welcome screen for a manual restore.</p>
       <p class="hint">Give that MAC address a DHCP reservation in your router now, so the new Home Assistant keeps the
         address your old one has. Home Assistant OS will boot on the first node, download its core, and show its Welcome
         screen, where you restore your backup.</p>
@@ -119,7 +123,17 @@
 
   <section id="step5" class="card">
     <h2><span class="num">5</span> Move in</h2>
-    <ol>
+    <div id="movein" hidden>
+      <p><b id="movein-phase"></b> <span id="movein-msg" class="msg"></span></p>
+      <p id="movein-done" class="done-box" hidden>Your Home Assistant is on the cluster now. <b>Shut this machine down</b> so the two do not
+        both talk to your devices, then open <code id="movein-url"></code>. Add the <b>Cluster Guard</b> integration there with a node's
+        address and the root password, once.</p>
+      <div id="movein-retry" class="actions" hidden>
+        <label>VM address <input id="movein-ip" placeholder="for example 192.168.1.50"></label>
+        <button id="movein-go">Try the move again</button>
+      </div>
+    </div>
+    <ol id="movein-manual">
       <li>Open Proxmox at <code id="pve-url"></code> (user <code>root</code>, the password from step 1) and confirm three green nodes.</li>
       <li>Open <code id="ha-url">http://homeassistant.local:8123</code> and restore your Home Assistant backup on the Welcome screen.</li>
       <li>In the restored Home Assistant, add the <b>Cluster Guard</b> integration with a node's address and the root password, once.</li>

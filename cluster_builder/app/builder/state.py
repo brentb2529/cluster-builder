@@ -17,6 +17,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from . import supervisor
+
 _LOGGER = logging.getLogger(__name__)
 
 PVE_ISO_URL = "https://enterprise.proxmox.com/iso/proxmox-ve_9.2-1.iso"
@@ -38,11 +40,22 @@ PHASES = [
     ("joined", "Joined the cluster"),
     ("image", "Downloading the Home Assistant OS image"),
     ("vm_created", "Home Assistant VM created and protected"),
+    ("vm_wait", "Waiting for the Home Assistant VM to come up on the network"),
+    ("vm_ip", "Home Assistant VM is on the network"),
     ("replicating", "Copy of the Home Assistant VM set up on this node"),
     ("done", "Done"),
     ("failed", "Failed"),
 ]
 PHASE_TEXT = dict(PHASES)
+MOVE_IN_PHASES = [
+    ("", "Not started"),
+    ("waiting_vm", "Waiting for the first node to report the VM's address"),
+    ("waiting_ha", "Waiting for Home Assistant OS to boot in the VM"),
+    ("uploading", "Sending your backup to the new Home Assistant"),
+    ("restoring", "The new Home Assistant is restoring your backup"),
+    ("done", "Moved in"),
+    ("failed", "Failed"),
+]
 
 
 def default_settings() -> dict[str, Any]:
@@ -66,6 +79,7 @@ def default_settings() -> dict[str, Any]:
             {"name": "pve3", "ip": "", "cluster_ip": "", "link_ip": "10.10.10.3", "lan_mac": "", "link_mac": ""},
         ],
         "vm": {
+            "move_in": supervisor.available(),
             "enabled": True,
             "vmid": 100,
             "name": "homeassistant",
@@ -121,6 +135,7 @@ class State:
                 "built_at": 0,
             },
             "cluster": {"created": False, "joining": None, "vm_created": False},
+            "move_in": {"phase": "", "msg": "", "ip": "", "updated": 0},
         }
         if self.path.exists():
             try:
@@ -134,6 +149,9 @@ class State:
         changed = False
         if "answer_token" not in s:
             s["answer_token"] = secrets.token_urlsafe(24)
+            changed = True
+        if "move_in_password" not in s:
+            s["move_in_password"] = secrets.token_urlsafe(18)
             changed = True
         if "ssh_private" not in s:
             try:
@@ -210,6 +228,7 @@ class State:
                 s[k] = new[k]
         if "vm" in new:
             s["vm"] = {**s["vm"], **{k: v for k, v in new["vm"].items() if k in s["vm"]}}
+            s["vm"]["move_in"] = bool(s["vm"].get("move_in"))
             if not s["vm"].get("mac"):
                 s["vm"]["mac"] = random_mac()
         if "nodes" in new:
@@ -254,6 +273,10 @@ class State:
                 errs.append(f"Enter an address for {n['name']}.")
         if s["vm"]["enabled"] and not s["image_url"] and self.build.get("status") != "running":
             pass  # resolved at build time
+        if s["vm"].get("move_in") and not supervisor.available():
+            errs.append(
+                "Moving this Home Assistant in needs the Supervisor (Home Assistant OS or Supervised): untick it."
+            )
         return errs
 
     # ---- nodes
@@ -282,6 +305,8 @@ class State:
             node["joined"] = True
         if phase == "vm_created":
             self.cluster["vm_created"] = True
+        if phase == "vm_ip":
+            self.d["move_in"]["ip"] = msg
         if phase in ("joined", "failed", "done") and self.cluster.get("joining") == name:
             self.cluster["joining"] = None
         self.save()
@@ -306,6 +331,12 @@ class State:
         for name in list(self.nodes):
             self.reset_node(name)
         self.cluster.update({"created": False, "joining": None, "joining_since": 0, "vm_created": False})
+        self.d["move_in"] = {"phase": "", "msg": "", "ip": "", "updated": 0}
+        self.save()
+
+    def move_in_log(self, phase: str, msg: str = "") -> None:
+        self.d["move_in"].update({"phase": phase, "msg": msg, "updated": time.time()})
+        _LOGGER.info("move-in %s: %s", phase, msg)
         self.save()
 
     def all_joined(self) -> bool:
@@ -342,6 +373,8 @@ class State:
         out["root_hash"] = None
         out["phases"] = PHASES
         out["ssh_public"] = self.secrets.get("ssh_public", "")
+        out["move_in_phases"] = MOVE_IN_PHASES
+        out["supervisor"] = supervisor.available()
         out["iso_name"] = "cluster-builder.iso"
         out["iso_token"] = self.secrets["answer_token"]
         return out

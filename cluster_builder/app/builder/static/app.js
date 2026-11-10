@@ -27,6 +27,7 @@
     for (const k of ["cluster_name", "domain", "gateway", "dns", "prefix", "timezone", "builder_url", "iso_url", "image_url", "disk_filter", "country", "keyboard", "extra_firstboot"]) set(k, s[k]);
     for (const k of ["memory", "cores", "disk_gb", "mac", "qm_args"]) set("vm_" + k, s.vm[k]);
     form.elements.vm_enabled.checked = !!s.vm.enabled;
+    form.elements.vm_move_in.checked = !!s.vm.move_in;
     if (!form.contains(document.activeElement) || !dirty) {
       $("#nodes-rows").innerHTML = s.nodes.map(nodeRow).join("");
       $("#nodes-adv").innerHTML = s.nodes.map(nodeAdv).join("");
@@ -39,7 +40,7 @@
       name: f[`n${i}_name`].value, ip: f[`n${i}_ip`].value, link_ip: f[`n${i}_link_ip`].value,
       cluster_ip: f[`n${i}_cluster_ip`].value, lan_mac: f[`n${i}_lan_mac`].value, link_mac: f[`n${i}_link_mac`].value,
     }));
-    const body = { nodes, vm: { enabled: f.vm_enabled.checked, memory: +f.vm_memory.value, cores: +f.vm_cores.value, disk_gb: +f.vm_disk_gb.value, qm_args: f.vm_qm_args.value, mac: f.vm_mac.value.trim().toUpperCase() } };
+    const body = { nodes, vm: { enabled: f.vm_enabled.checked, move_in: f.vm_move_in.checked, memory: +f.vm_memory.value, cores: +f.vm_cores.value, disk_gb: +f.vm_disk_gb.value, qm_args: f.vm_qm_args.value, mac: f.vm_mac.value.trim().toUpperCase() } };
     for (const k of ["cluster_name", "domain", "gateway", "dns", "timezone", "builder_url", "iso_url", "image_url", "disk_filter", "country", "keyboard", "extra_firstboot"]) body[k] = f[k].value.trim();
     body.prefix = +f.prefix.value;
     if (f.password.value) body.password = f.password.value;
@@ -122,7 +123,25 @@
     dl.href = s.iso_ready ? `download/${s.iso_name}` : "#";
     $("#iso-url").textContent = s.iso_ready ? `${s.settings.builder_url.replace(/\/$/, "")}/iso/${s.iso_token}/${s.iso_name}` : "(after the build)";
     $("#pve-url").textContent = `https://${s.settings.nodes[0].ip || "<node address>"}:8006`;
+    form.elements.vm_move_in.disabled = !s.supervisor;
+    $("#movein-hint").hidden = !s.supervisor;
+    const mi = s.move_in || {};
+    const moving = !!(s.settings.vm.move_in && s.supervisor);
+    $("#movein").hidden = !moving;
+    $("#movein-manual").hidden = moving;
+    if (moving) {
+      const text = (s.move_in_phases.find((x) => x[0] === (mi.phase || "")) || ["", mi.phase])[1];
+      $("#movein-phase").textContent = mi.phase ? text : (s.cluster.vm_created ? "Waiting for the first node to report the VM's address" : "Starts by itself once the first node has created the VM");
+      $("#movein-msg").textContent = mi.msg || "";
+      $("#movein-done").hidden = mi.phase !== "done";
+      $("#movein-url").textContent = mi.ip ? (mi.ip.includes(":") ? `http://${mi.ip}` : `http://${mi.ip}:8123`) : "";
+      $("#movein-retry").hidden = !(mi.phase === "failed" || (s.cluster.vm_created && !mi.phase));
+      if (document.activeElement !== $("#movein-ip") && !$("#movein-ip").value) $("#movein-ip").value = mi.ip || "";
+    }
   };
+  $("#movein-go").addEventListener("click", async () => {
+    try { await api("api/move_in", { ip: $("#movein-ip").value.trim() }); refresh(); } catch (err) { $("#movein-msg").textContent = err.message; }
+  });
 
   const refresh = async () => { try { render(await api("api/state")); } catch (err) { console.error(err); } };
   refresh();
