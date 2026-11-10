@@ -344,7 +344,7 @@ async def test_vm_ip_from_the_first_node_starts_the_move(state: State, sockets, 
     from builder import server as srv_mod
 
     started: list[str] = []
-    monkeypatch.setattr(srv_mod.move_in, "run", lambda st, ip: _noop(started, ip))
+    monkeypatch.setattr(srv_mod.move_in, "run", lambda st, ip, resumed=False: _noop(started, ip))
     s1 = state.node_secret("pve1")
     async with TestClient(TestServer(srv_mod.make_lan_app(state))) as c:
         await c.post(f"/status/pve1/{s1}", json={"phase": "vm_ip", "msg": "192.168.1.50"})
