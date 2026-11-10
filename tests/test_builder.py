@@ -211,13 +211,17 @@ async def test_supervisor_backup_for_the_move(state: State, sockets, monkeypatch
 
     async def new_partial(request):
         body = await request.json()
-        calls.append(f"partial {body['addons']} {body['homeassistant']} {body['password']}")
-        return web.json_response({"result": "ok", "data": {"job_id": "j1"}})
+        calls.append(f"partial {body['addons']} {body['homeassistant']} {body['password']} {body['folders']}")
+        return web.json_response({"result": "ok", "data": {"slug": "s1"}})
 
-    async def job(_):
+    async def backups(_):
         return web.json_response(
-            {"result": "ok", "data": {"done": True, "reference": "s1", "errors": [], "progress": 100}}
+            {"result": "ok", "data": {"backups": [{"slug": "old1", "name": "Cluster Builder move-in"}]}}
         )
+
+    async def delete_old(_):
+        calls.append("deleted old1")
+        return web.json_response({"result": "ok", "data": {}})
 
     async def download(_):
         return web.Response(body=b"backup-bytes")
@@ -230,17 +234,23 @@ async def test_supervisor_backup_for_the_move(state: State, sockets, monkeypatch
     app.router.add_get("/addons", addons)
     app.router.add_get("/supervisor/info", sup_info)
     app.router.add_post("/backups/new/partial", new_partial)
-    app.router.add_get("/jobs/j1", job)
+    app.router.add_get("/backups", backups)
+    app.router.add_delete("/backups/old1", delete_old)
     app.router.add_get("/backups/s1/download", download)
     app.router.add_delete("/backups/s1", delete)
     async with TestServer(app) as srv:
         monkeypatch.setattr(supervisor, "SUP", f"http://{srv.host}:{srv.port}")
         monkeypatch.setenv("SUPERVISOR_TOKEN", "t")
+        monkeypatch.setattr(supervisor, "SHARE_OWN", state.downloads / "no-such-share")
         async with aiohttp.ClientSession() as session:
             info = await supervisor.make_backup(session, "pw", state.downloads / "move-in.tar", lambda *_: None)
     assert (state.downloads / "move-in.tar").read_bytes() == b"backup-bytes"
     assert info["addons"] == ["core_ssh"] and info["bytes"] == 12
-    assert calls == ["partial ['core_ssh'] True pw", "deleted s1"]
+    assert calls == [
+        "deleted old1",
+        "partial ['core_ssh'] True pw ['ssl', 'share', 'media', 'addons/local']",
+        "deleted s1",
+    ]
 
 
 async def test_vm_ip_from_the_first_node_starts_the_move(state: State, sockets, monkeypatch) -> None:

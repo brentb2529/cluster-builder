@@ -17,6 +17,7 @@ SUP = os.environ.get("CB_SUPERVISOR_URL", "http://supervisor")
 BACKUP_FILE = "move-in.tar"
 BACKUP_NAME = "Cluster Builder move-in"
 FOLDERS = ["ssl", "share", "media", "addons/local"]
+SHARE_OWN = Path("/share/cluster_builder")  # images placed there by hand would bloat the backup
 OWN_SLUG_SUFFIX = "cluster_builder"
 
 
@@ -61,6 +62,10 @@ async def make_backup(
     """A backup of everything here except this add-on (its downloads would bloat it), encrypted with the
     one-time move-in password; downloaded to dest and then deleted from the Supervisor."""
     addons = [a for a in await _installed_addons(session) if not a.endswith(OWN_SLUG_SUFFIX)]
+    folders = list(FOLDERS)
+    if SHARE_OWN.is_dir() and any(SHARE_OWN.iterdir()):
+        folders.remove("share")
+        _LOGGER.warning("%s holds files, so the share folder is left out of the move-in backup", SHARE_OWN)
     # a stray one from an interrupted build is only clutter
     for b in (await _api(session, "GET", "/backups")).get("backups", []):
         if b.get("name") == BACKUP_NAME and b.get("slug"):
@@ -77,7 +82,7 @@ async def make_backup(
             "compressed": True,
             "homeassistant": True,
             "addons": addons,
-            "folders": FOLDERS,
+            "folders": folders,
         },
         timeout=aiohttp.ClientTimeout(total=3 * 3600),
     )
@@ -97,4 +102,4 @@ async def make_backup(
         await _api(session, "DELETE", f"/backups/{slug}")
     except SupervisorError as err:  # it is only clutter at this point
         _LOGGER.warning("could not delete backup %s: %s", slug, err)
-    return {"addons": addons, "folders": FOLDERS, "bytes": dest.stat().st_size, "made_at": time.time()}
+    return {"addons": addons, "folders": folders, "bytes": dest.stat().st_size, "made_at": time.time()}
