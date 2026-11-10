@@ -3,7 +3,7 @@
 ## 0.1.2
 
 - Move-in: the add-on looks for the new Home Assistant on port 8123 **and** port 80 (Home Assistant OS 18
-  serves it on 80), tolerates the "preparing Home Assistant" page shown during the first boot, and knows
+  serves it on 80), tells the landing page shown during the first boot from a running Home Assistant, and knows
   a restored Home Assistant 2026 by its missing onboarding API. Both waits are an hour now.
 - Fixed: creating the Home Assistant VM could fail with "cluster not ready - no quorum?" right after the
   cluster was formed (the cluster filesystem had not connected to corosync). The first boot now waits for the

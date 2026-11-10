@@ -155,15 +155,17 @@ class FakeWelcome:
 
     def app(self) -> web.Application:
         async def status(_):
-            if self.landing > 0:
+            if self.landing > 0:  # HA OS's first-boot landing page: 401 text to every /api/ path, no manifest
                 self.landing -= 1
-                return web.Response(text="<html>Preparing Home Assistant</html>", content_type="text/html")
+                return web.Response(text="Unauthorized", status=401)
             if self.user_done and self.gone_when_done:
                 raise web.HTTPNotFound()
             return web.json_response([{"step": "user", "done": self.user_done}, {"step": "core_config", "done": False}])
 
-        async def api_root(_):
-            return web.json_response({"message": "Unauthorized"}, status=401)
+        async def manifest(_):
+            if self.landing > 0:
+                raise web.HTTPNotFound()
+            return web.json_response({"name": "Home Assistant"}, content_type="application/manifest+json")
 
         async def upload(request):
             assert request.query["agent_id"] == "hassio.local"
@@ -179,7 +181,7 @@ class FakeWelcome:
 
         app = web.Application()
         app.router.add_get("/api/onboarding", status)
-        app.router.add_get("/api/", api_root)
+        app.router.add_get("/manifest.json", manifest)
         app.router.add_post("/api/onboarding/backup/upload", upload)
         app.router.add_post("/api/onboarding/backup/restore", restore)
         return app
@@ -210,7 +212,7 @@ async def test_move_in_restores_through_the_welcome_screen(state: State, sockets
 
 
 async def test_move_in_handles_the_landing_page_and_a_gone_onboarding_api(state: State, sockets, monkeypatch) -> None:
-    """HA OS first shows a 'preparing' HTML page; HA 2026 drops the onboarding API once onboarded (404)."""
+    """HA OS first shows a landing page (401 on /api/*, no manifest); HA 2026 drops the onboarding API once onboarded."""
     from builder import move_in
 
     monkeypatch.setattr(move_in, "POLL", 0.01)
@@ -225,7 +227,7 @@ async def test_move_in_handles_the_landing_page_and_a_gone_onboarding_api(state:
     assert state.d["move_in"]["phase"] == "done", state.d["move_in"]
     assert welcome.restore is not None
 
-    # an onboarded HA 2026 (404 on the onboarding API, 401 on /api/) is "already set up", not "not up yet"
+    # an onboarded HA 2026 (404 on the onboarding API, frontend manifest there) is "already set up"
     async with TestServer(welcome.app()) as srv:
         await move_in.run(state, f"{srv.host}:{srv.port}")
     assert state.d["move_in"]["phase"] == "failed" and "already set up" in state.d["move_in"]["msg"]

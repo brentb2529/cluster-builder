@@ -58,19 +58,21 @@ async def _onboarding(session: aiohttp.ClientSession, base: str) -> tuple[int, o
 
 
 async def _core_up(session: aiohttp.ClientSession, base: str) -> bool:
-    """A running Home Assistant answers /api/ with 401 when no token is sent."""
+    """A running Home Assistant serves its frontend's manifest; the first-boot landing page answers 404 there
+    and 401 to every /api/ path, so it must not pass for a Home Assistant that is up."""
     try:
-        async with session.get(f"{base}/api/", allow_redirects=False) as r:
-            return r.status == 401
+        async with session.get(f"{base}/manifest.json", allow_redirects=False) as r:
+            return r.status == 200 and "json" in r.headers.get("Content-Type", "")
     except (TimeoutError, aiohttp.ClientError):
         return False
 
 
 async def _set_up(session: aiohttp.ClientSession, base: str, status: int, steps: object) -> bool:
-    """True when the Home Assistant at base is past onboarding (it then answers 404 or 401 there)."""
+    """True when the Home Assistant at base is past onboarding: its steps say so, or (Home Assistant 2026)
+    the onboarding API is gone (404) while the frontend is there."""
     if status == 200:
         return _user_done(steps)
-    return status in (401, 404) and await _core_up(session, base)
+    return status == 404 and await _core_up(session, base)
 
 
 async def run(state: State, ip: str) -> None:
