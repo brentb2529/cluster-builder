@@ -43,7 +43,7 @@ Keep it out of machines you care about anyway.
 - After the install, Proxmox runs the first-boot script it fetched from the add-on: static address on
   the port that got DHCP, the other port as the private cluster link, no-subscription repositories,
   updates; the first node creates the cluster, the others take turns joining (over SSH with the add-on's
-  key, which is removed afterwards); the first node creates the Home Assistant VM from the official
+  key; the last node to join removes it from the whole cluster); the first node creates the Home Assistant VM from the official
   image as a high-availability resource, and every other node adds a one-minute replication job for it.
 - Every step is reported back to the add-on, which is what the page shows. Each node also keeps
   `/var/log/cluster-builder.log`.

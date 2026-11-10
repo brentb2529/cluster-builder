@@ -101,6 +101,10 @@ async def test_lan_routes(state: State, sockets) -> None:
         assert (await c.get(f"/join/pve2/{s2}")).status == 200  # same joiner may ask again
         await c.post(f"/status/pve2/{s2}", json={"phase": "joined"})
         assert (await c.get(f"/join/pve3/{s3}")).status == 200
+        assert (await c.get(f"/cleanup/pve2/{s2}")).status == 409  # pve3 still needs the build key
+        await c.post(f"/status/pve3/{s3}", json={"phase": "joined"})
+        assert (await c.get(f"/cleanup/pve3/{s3}")).status == 200
+        assert (await c.get("/cleanup/pve3/nope")).status == 403
         (state.downloads / "x.img").write_bytes(b"img")
         assert (await c.get(f"/files/{token}/x.img")).status == 200
         assert (await c.get(f"/files/{token}/../state.json")).status in (403, 404)

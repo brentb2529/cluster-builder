@@ -303,6 +303,14 @@ async def lan_join(request: web.Request) -> web.Response:
     raise web.HTTPConflict(text=f"{c['joining']} is joining")
 
 
+async def lan_cleanup(request: web.Request) -> web.Response:
+    """200 once every node has joined: the asking node may remove the build key for the whole cluster."""
+    _node_or_403(request)
+    if _state(request).all_joined():
+        return web.Response(text="go")
+    raise web.HTTPConflict(text="not every node has joined yet")
+
+
 async def lan_file(request: web.Request) -> web.StreamResponse:
     state = _state(request)
     if request.match_info["token"] != state.secrets["answer_token"]:
@@ -335,6 +343,7 @@ def make_lan_app(state: State) -> web.Application:
     app.router.add_post("/status/{node}/{secret}", lan_status)
     app.router.add_get("/join/{node}/{secret}", lan_join)
     app.router.add_get("/files/{token}/{name}", lan_file)
+    app.router.add_get("/cleanup/{node}/{secret}", lan_cleanup)
     app.router.add_get("/iso/{token}/" + build.ISO_NAME, lan_iso)
     return app
 

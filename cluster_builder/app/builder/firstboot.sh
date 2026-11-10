@@ -124,8 +124,13 @@ else
   done
   cat /tmp/kh >> /root/.ssh/known_hosts
   if ! pvecm status >/dev/null 2>&1; then
+    rc=0
     # shellcheck disable=SC2086
-    pvecm add "$FIRST_IP" --link0 "$CLUSTER_IP" $LINK_OPT --use_ssh
+    out=$(pvecm add "$FIRST_IP" --link0 "$CLUSTER_IP" $LINK_OPT --use_ssh 2>&1) || rc=$?
+    echo "$out"
+    if [ "$rc" != 0 ] || echo "$out" | grep -qiE 'unable to|permission denied|^error'; then
+      fail "join failed: $(echo "$out" | grep -iE 'unable to|denied|error' | tail -1 | cut -c1-200)"
+    fi
   fi
   wait_quorum || fail "no quorum after joining"
   say joined "$(pvecm status 2>/dev/null | grep -E 'Quorate' | tr -s ' ')"
@@ -164,7 +169,13 @@ if [ "$VM_ENABLED" = 1 ]; then
   fi
 fi
 
-# --- tidy: the builder's key was only for the join
+# --- tidy: the builder's key was only for the joins. authorized_keys is cluster-wide once a node is in,
+# so it must stay until the last node has joined; the add-on says when, and that node removes it for all.
+code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "$B/cleanup/$N/$S" || echo 000)
 AK=/root/.ssh/authorized_keys
-if [ -f "$AK" ]; then grep -v ' cluster-builder$' "$AK" > /tmp/ak || true; cat /tmp/ak > "$AK"; rm -f /tmp/ak; fi
-say done "$(hostname) ready"
+if [ "$code" = 200 ]; then
+  if [ -f "$AK" ]; then grep -v ' cluster-builder$' "$AK" > /tmp/ak || true; cat /tmp/ak > "$AK"; rm -f /tmp/ak; fi
+  say done "$(hostname) ready; build key removed from the cluster"
+else
+  say done "$(hostname) ready (the build key stays until the last node has joined)"
+fi

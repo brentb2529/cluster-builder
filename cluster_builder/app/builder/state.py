@@ -274,8 +274,12 @@ class State:
         if phase == "installing":
             node["installed"] = False
             node["allow_reinstall"] = False
+            node["joined"] = False
         if phase == "cluster_created":
             self.cluster["created"] = True
+            node["joined"] = True
+        if phase == "joined":
+            node["joined"] = True
         if phase == "vm_created":
             self.cluster["vm_created"] = True
         if phase in ("joined", "failed", "done") and self.cluster.get("joining") == name:
@@ -289,6 +293,7 @@ class State:
             "machine": None,
             "installed": False,
             "allow_reinstall": False,
+            "joined": False,
             "log": [],
             "updated": 0,
         }
@@ -302,6 +307,10 @@ class State:
             self.reset_node(name)
         self.cluster.update({"created": False, "joining": None, "joining_since": 0, "vm_created": False})
         self.save()
+
+    def all_joined(self) -> bool:
+        """Every configured node is in the cluster (so the build key can go)."""
+        return all(n.get("joined") for n in self.nodes.values())
 
     def match_machine(self, macs: list[str], info: dict[str, Any]) -> tuple[str | None, str]:
         """Which node a booting machine is. Known MACs win; else the first node still waiting."""
