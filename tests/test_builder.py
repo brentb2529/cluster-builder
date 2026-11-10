@@ -238,6 +238,27 @@ async def test_move_in_handles_the_landing_page_and_a_gone_onboarding_api(state:
     assert state.d["move_in"]["phase"] == "failed" and "already set up" in state.d["move_in"]["msg"]
 
 
+async def test_move_in_resumes_after_an_addon_restart(state: State, monkeypatch) -> None:
+    """The add-on was updated while uploading: on start it must pick the move-in up again."""
+    from builder import server as srv_mod
+
+    started: list[str] = []
+
+    async def _noop(ip):
+        started.append(ip)
+
+    monkeypatch.setattr(srv_mod.move_in, "run", lambda st, ip: _noop(ip))
+    state.move_in_log("uploading", "sending")
+    state.d["move_in"]["ip"] = "192.168.77.100"
+    srv_mod.resume_move_in(state)
+    await asyncio.sleep(0)
+    assert started == ["192.168.77.100"]
+    state.move_in_log("done", "moved")
+    srv_mod.resume_move_in(state)
+    await asyncio.sleep(0)
+    assert started == ["192.168.77.100"]
+
+
 def test_move_in_candidates() -> None:
     from builder.move_in import candidates
 

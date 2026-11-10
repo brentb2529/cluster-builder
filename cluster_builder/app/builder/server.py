@@ -399,6 +399,7 @@ async def serve(state: State, ui_port: int = 8099, lan_port: int = 8808, dev: bo
         await web.TCPSite(runner, "0.0.0.0", port).start()
         runners.append(runner)
     _LOGGER.info("UI on :%s (ingress), machines on :%s", ui_port, lan_port)
+    resume_move_in(state)  # an add-on restart (update, rebuild) must not strand a move-in half way
     try:
         while True:
             await asyncio.sleep(3600)
