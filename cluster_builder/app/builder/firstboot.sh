@@ -28,6 +28,7 @@ done
 # shellcheck disable=SC1091
 . /run/cb.env
 
+wait_quorum() { for i in $(seq 1 60); do pvecm status 2>/dev/null | grep -q "Quorate: *Yes" && return 0; sleep 3; done; return 1; }
 mac_if() { for d in /sys/class/net/*; do [ -e "$d/device" ] || continue; [ "$(cat "$d/address" 2>/dev/null)" = "$1" ] && basename "$d" && return 0; done; return 1; }
 
 # --- network: the NIC the installer used (DHCP) becomes static vmbr0; cluster and link addresses on top
@@ -108,6 +109,7 @@ if [ "$IS_FIRST" = 1 ]; then
     # shellcheck disable=SC2086
     pvecm create "$CLUSTER" --link0 "$CLUSTER_IP" $LINK_OPT
   fi
+  wait_quorum || fail "the new cluster did not become quorate"
   say cluster_created "cluster $CLUSTER on $CLUSTER_IP"
 else
   say waiting_cluster
@@ -125,7 +127,7 @@ else
     # shellcheck disable=SC2086
     pvecm add "$FIRST_IP" --link0 "$CLUSTER_IP" $LINK_OPT --use_ssh
   fi
-  for i in $(seq 1 60); do pvecm status 2>/dev/null | grep -q Quorate && break; sleep 5; done
+  wait_quorum || fail "no quorum after joining"
   say joined "$(pvecm status 2>/dev/null | grep -E 'Quorate' | tr -s ' ')"
 fi
 rm -f /root/.ssh/id_ed25519
@@ -149,6 +151,7 @@ if [ "$VM_ENABLED" = 1 ]; then
       qm resize "$VMID" scsi0 "${VM_DISK_GB}G" || true
       rm -f "$IMG"
     fi
+    wait_quorum || true
     ha-manager config 2>/dev/null | grep -q "^vm:$VMID" || ha-manager add "vm:$VMID" --state started --max_restart 1 --max_relocate 1
     ha-manager set "vm:$VMID" --state started
     say vm_created "VM $VMID ($VM_NAME) is a failover resource; MAC $VM_MAC"
