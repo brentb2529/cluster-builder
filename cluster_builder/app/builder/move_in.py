@@ -76,7 +76,9 @@ async def _set_up(session: aiohttp.ClientSession, base: str, status: int, steps:
     return status == 404 and await _core_up(session, base)
 
 
-async def run(state: State, ip: str) -> None:
+async def run(state: State, ip: str, resumed: bool = False) -> None:
+    """resumed: the add-on restarted while a move was under way. The backup may already be restoring, so a
+    Home Assistant that comes up set up is then the finished move, not someone else's."""
     log = state.move_in_log
     backup = state.downloads / BACKUP_FILE
     if not backup.exists():
@@ -86,13 +88,23 @@ async def run(state: State, ip: str) -> None:
         timeout = aiohttp.ClientTimeout(total=None, sock_connect=10, sock_read=900)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             bases = candidates(ip, await supervisor.core_port(session) if supervisor.available() else None)
-            log("waiting_ha", f"waiting for Home Assistant OS to come up at {ip} (its first boot takes a few minutes)")
-            deadline = time.time() + WAIT_HA
+            if resumed:
+                log("restoring", f"picking the move up again after a restart: checking the Home Assistant at {ip}")
+                deadline = time.time() + WAIT_RESTORE
+            else:
+                log(
+                    "waiting_ha",
+                    f"waiting for Home Assistant OS to come up at {ip} (its first boot takes a few minutes)",
+                )
+                deadline = time.time() + WAIT_HA
             base = ""
             while not base:
                 for b in bases:
                     status, steps = await _onboarding(session, b)
                     if await _set_up(session, b, status, steps):
+                        if resumed:
+                            log("done", f"Your Home Assistant now runs on the cluster at {b}")
+                            return
                         log("failed", f"the Home Assistant at {b} is already set up, so it cannot take your backup")
                         return
                     if status == 200 and isinstance(steps, list):
@@ -101,7 +113,10 @@ async def run(state: State, ip: str) -> None:
                 if base:
                     break
                 if time.time() > deadline:
-                    log("failed", f"Home Assistant did not answer at {ip} within {WAIT_HA // 60} minutes")
+                    log(
+                        "failed",
+                        f"Home Assistant did not answer at {ip} within {(deadline and WAIT_RESTORE if resumed else WAIT_HA) // 60} minutes",
+                    )
                     return
                 await asyncio.sleep(POLL)
 

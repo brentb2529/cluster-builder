@@ -244,19 +244,34 @@ async def test_move_in_resumes_after_an_addon_restart(state: State, monkeypatch)
 
     started: list[str] = []
 
-    async def _noop(ip):
-        started.append(ip)
+    async def _noop(ip, resumed):
+        started.append((ip, resumed))
 
-    monkeypatch.setattr(srv_mod.move_in, "run", lambda st, ip: _noop(ip))
+    monkeypatch.setattr(srv_mod.move_in, "run", lambda st, ip, resumed=False: _noop(ip, resumed))
     state.move_in_log("uploading", "sending")
     state.d["move_in"]["ip"] = "192.168.77.100"
     srv_mod.resume_move_in(state)
     await asyncio.sleep(0)
-    assert started == ["192.168.77.100"]
+    assert started == [("192.168.77.100", True)]
     state.move_in_log("done", "moved")
     srv_mod.resume_move_in(state)
     await asyncio.sleep(0)
-    assert started == ["192.168.77.100"]
+    assert started == [("192.168.77.100", True)]
+
+
+async def test_move_in_resumed_takes_a_set_up_ha_as_done(state: State, sockets, monkeypatch) -> None:
+    """The restore was already sent before the restart: the HA coming up onboarded is the finished move."""
+    from builder import move_in
+
+    monkeypatch.setattr(move_in, "POLL", 0.01)
+    (state.downloads / "move-in.tar").write_bytes(b"tar")
+    welcome = FakeWelcome()
+    welcome.user_done = True
+    welcome.gone_when_done = True
+    async with TestServer(welcome.app()) as srv:
+        await move_in.run(state, f"{srv.host}:{srv.port}", resumed=True)
+    assert state.d["move_in"]["phase"] == "done", state.d["move_in"]
+    assert welcome.restore is None
 
 
 def test_move_in_candidates() -> None:

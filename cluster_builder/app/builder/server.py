@@ -312,12 +312,12 @@ async def lan_status(request: web.Request) -> web.Response:
     return web.Response(text="ok")
 
 
-def start_move_in(state: State, ip: str) -> bool:
+def start_move_in(state: State, ip: str, resumed: bool = False) -> bool:
     """Run the move-in in the background (one at a time)."""
     task = getattr(state, "move_in_task", None)
     if task is not None and not task.done():
         return False
-    state.move_in_task = asyncio.create_task(move_in.run(state, ip))  # type: ignore[attr-defined]
+    state.move_in_task = asyncio.create_task(move_in.run(state, ip, resumed))  # type: ignore[attr-defined]
     return True
 
 
@@ -325,7 +325,7 @@ def resume_move_in(state: State) -> None:
     """After an add-on restart, pick up a move-in that was under way."""
     m = state.d["move_in"]
     if m.get("phase") in move_in.RESUMABLE and m.get("ip"):
-        start_move_in(state, m["ip"])
+        start_move_in(state, m["ip"], resumed=True)
 
 
 async def lan_join(request: web.Request) -> web.Response:
