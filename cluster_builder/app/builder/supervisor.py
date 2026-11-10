@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import time
@@ -33,10 +34,14 @@ def _headers() -> dict[str, str]:
 
 async def _api(session: aiohttp.ClientSession, method: str, path: str, **kw: Any) -> dict[str, Any]:
     async with session.request(method, SUP + path, headers=_headers(), **kw) as r:
-        body = await r.json(content_type=None)
+        text = await r.text()
+        try:
+            body = json.loads(text)
+        except ValueError:
+            body = {}
         if r.status >= 400 or (isinstance(body, dict) and body.get("result") == "error"):
             msg = body.get("message") if isinstance(body, dict) else ""
-            raise SupervisorError(f"{method} {path}: {msg or r.status}")
+            raise SupervisorError(f"Supervisor {method} {path}: {msg or text[:120] or r.status}")
         return body.get("data", {}) if isinstance(body, dict) else {}
 
 
