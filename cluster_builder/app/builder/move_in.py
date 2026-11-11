@@ -23,6 +23,8 @@ SETTLE = 30.0
 WAIT_HA = 60 * 60
 WAIT_RESTORE = 60 * 60
 WAIT_UPLOAD = 15 * 60
+WAIT_FROZEN = 5 * 60  # replication snapshots freeze the backup manager for seconds, every minute
+FROZEN_POLL = 3.0
 RESUMABLE = ("waiting_ha", "uploading", "restoring")
 PORTS = (8123, 80)  # Home Assistant's classic port, and the port Home Assistant OS 18 serves it on
 
@@ -74,6 +76,12 @@ async def _set_up(session: aiohttp.ClientSession, base: str, status: int, steps:
     if status == 200:
         return _user_done(steps)
     return status == 404 and await _core_up(session, base)
+
+
+def _frozen(text: str) -> bool:
+    """A refusal that will pass in seconds: the backup manager is frozen for a disk snapshot, or still busy."""
+    t = text.lower()
+    return "freeze" in t or "frozen" in t or "blocked from execution" in t or "busy" in t
 
 
 def _waiting_msg(ip: str, answered: int, waited: float) -> str:
@@ -240,13 +248,23 @@ async def run(state: State, ip: str, resumed: bool = False) -> None:
                 "restore_database": True,
                 "restore_folders": info.get("folders", []),
             }
-            try:
-                async with session.post(f"{base}/api/onboarding/backup/restore", json=body) as r:
-                    if r.status != 200:
-                        log("failed", f"the restore was refused: {r.status} {(await r.text())[:300]}")
-                        return
-            except (TimeoutError, aiohttp.ClientError):
-                pass  # it restarts into the restore before answering: that is the restore starting
+            # the cluster snapshots the VM for replication every minute, and Home Assistant OS's guest agent
+            # freezes the Supervisor's backup manager for those seconds: a restore asked then is refused with
+            # "blocked from execution, system is not running - freeze". Ask again after the thaw.
+            deadline = time.time() + WAIT_FROZEN
+            while True:
+                try:
+                    async with session.post(f"{base}/api/onboarding/backup/restore", json=body) as r:
+                        if r.status == 200:
+                            break
+                        text = (await r.text())[:300]
+                except (TimeoutError, aiohttp.ClientError):
+                    break  # it restarts into the restore before answering: that is the restore starting
+                if not _frozen(text) or time.time() > deadline:
+                    log("failed", f"the restore was refused: {r.status} {text}")
+                    return
+                log("restoring", "the new Home Assistant is frozen for a snapshot of its disk; asking again")
+                await asyncio.sleep(FROZEN_POLL)
             log("restoring", "it restarts while it restores, which takes several minutes")
             await asyncio.sleep(SETTLE)
             what = await _wait_restored(session, bases, time.time() + WAIT_RESTORE)

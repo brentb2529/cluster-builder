@@ -154,6 +154,7 @@ class FakeWelcome:
         self.uploaded = b""
         self.restore: dict | None = None
         self.busy = 0  # uploads refused with 500 'Backup manager busy' first
+        self.frozen = 0  # restores refused with 400 'system is not running - freeze' first
         self.landing = 0  # polls answered with the "preparing Home Assistant" HTML page first
         self.gone_when_done = False  # HA 2026: no onboarding API at all once onboarded (404), /api/ says 401
 
@@ -182,6 +183,15 @@ class FakeWelcome:
             return web.json_response({"backup_id": "abc123"}, status=201)
 
         async def restore(request):
+            if self.frozen > 0:  # a replication snapshot froze the backup manager (HA OS guest agent hook)
+                self.frozen -= 1
+                return web.json_response(
+                    {
+                        "code": "restore_failed",
+                        "message": "'BackupManager.do_restore_partial' blocked from execution, system is not running - freeze",
+                    },
+                    status=400,
+                )
             self.restore = await request.json()
             self.user_done = True  # "restarted with the restored config"
             return web.Response()
@@ -236,7 +246,9 @@ async def test_move_in_handles_the_landing_page_and_a_gone_onboarding_api(state:
     welcome = FakeWelcome()
     welcome.landing = 2
     welcome.busy = 2
+    welcome.frozen = 2
     welcome.gone_when_done = True
+    monkeypatch.setattr(move_in, "FROZEN_POLL", 0.01)
     seen: list[str] = []
     orig = state.move_in_log
     monkeypatch.setattr(state, "move_in_log", lambda phase, msg="": (seen.append(msg), orig(phase, msg)))
@@ -246,6 +258,8 @@ async def test_move_in_handles_the_landing_page_and_a_gone_onboarding_api(state:
     assert welcome.restore is not None
     # while the landing page answered, the page said what the wait is (not "a few minutes" for an hour)
     assert any("downloading Home Assistant itself" in m for m in seen), seen
+    assert any("frozen for a snapshot" in m for m in seen), seen
+    assert welcome.frozen == 0
     assert "waited 0 min" not in " ".join(seen)
     assert "; waited 7 min so far" in move_in._waiting_msg("1.2.3.4", 0, 7 * 60 + 5)
 

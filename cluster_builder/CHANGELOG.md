@@ -2,6 +2,9 @@
 
 ## 0.2.1
 
+- Move-in: the restore is asked again when the new Home Assistant refuses it because it is frozen for a disk
+  snapshot (the cluster replicates the VM every minute, and Home Assistant OS's guest agent freezes the Supervisor's
+  backup manager for those seconds). It used to fail the move on that.
 - While the move-in waits for the new Home Assistant, step 5 says what it sees at the VM's address: nothing yet,
   Home Assistant OS's landing page (it is downloading Home Assistant itself, about 1 GB, slow on a slow line), or
   Home Assistant starting; with the minutes waited. It used to say "takes a few minutes" for up to an hour.
