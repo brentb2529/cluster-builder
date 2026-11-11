@@ -93,14 +93,15 @@
   });
   const renderMachines = (s) => {
     const macs = Object.keys(s.machines || {}).sort((a, b) => (s.machines[a].first || 0) - (s.machines[b].first || 0));
-    const sig = JSON.stringify([macs, macs.map((m) => s.machines[m].from), s.settings.nodes.map((n) => n.name), s.settings.install_method]);
+    const assigned = s.settings.nodes.filter((n) => n.boot_mac).length;
+    const sig = JSON.stringify([macs, macs.map((m) => s.machines[m].from), s.settings.nodes.map((n) => n.name), s.settings.install_method, assigned]);
     if (!changed("machines", sig)) { tickMachines(s); tickAgo(); return; }
     $("#machines").innerHTML = macs.map((mac) => {
       const m = s.machines[mac];
       return `<div class="machine-row" data-mac-info="${esc(mac)}"><span><b class="mono">${esc(mac)}</b> <span class="msg">asked <span data-ago="${m.last || 0}">${esc(ago(m.last))}</span>${m.from ? ` from ${esc(m.from)}` : ""}, <span data-count>${m.count} time${m.count === 1 ? "" : "s"}</span></span></span>
         <span>${s.settings.nodes.map((n) => `<button data-mac="${esc(mac)}" data-node="${esc(n.name)}">This is ${esc(n.name)}</button>`).join(" ")}
         <button data-mac="${esc(mac)}" data-forget="1">Not one of mine</button></span></div>`;
-    }).join("") || `<p class="msg">${s.settings.install_method === "network" ? "No machine has asked to boot yet." : ""}</p>`;
+    }).join("") || `<p class="msg">${s.settings.install_method !== "network" ? "" : assigned === 0 ? "No machine has asked to boot yet." : assigned < s.settings.nodes.length ? "Waiting for the other machines to ask." : ""}</p>`;
   };
   $("#machines").addEventListener("click", async (ev) => {
     const b = ev.target.closest("button"); if (!b || !b.dataset.mac) return;
@@ -204,7 +205,7 @@
       $("#movein-phase").textContent = mi.phase ? text : (s.cluster.vm_created ? "Waiting for the first node to report the VM's address" : "Starts by itself once the first node has created the VM");
       $("#movein-msg").textContent = mi.msg || "";
       $("#movein-done").hidden = mi.phase !== "done";
-      $("#movein-url").textContent = mi.ip ? (mi.ip.includes(":") ? `http://${mi.ip}` : `http://${mi.ip}:8123`) : "";
+      $("#movein-url").textContent = mi.url || (mi.ip ? (mi.ip.includes(":") ? `http://${mi.ip}` : `http://${mi.ip}:8123`) : "");
       $("#movein-retry").hidden = !(mi.phase === "failed" || (s.cluster.vm_created && !mi.phase));
       if (document.activeElement !== $("#movein-ip") && !$("#movein-ip").value) $("#movein-ip").value = mi.ip || "";
     }

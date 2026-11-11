@@ -203,8 +203,10 @@ async def test_move_in_restores_through_the_welcome_screen(state: State, sockets
     state.build["move_in_backup"] = {"addons": ["core_ssh"], "folders": ["share", "ssl"]}
     welcome = FakeWelcome()
     async with TestServer(welcome.app()) as srv:
-        await move_in.run(state, f"{srv.host}:{srv.port}")
+        where = f"{srv.host}:{srv.port}"
+        await move_in.run(state, where)
     assert state.d["move_in"]["phase"] == "done", state.d["move_in"]
+    assert state.d["move_in"]["url"] == f"http://{where}"  # step 5 opens the address that answered
     assert welcome.uploaded == b"tar" * 100
     assert welcome.restore["backup_id"] == "abc123"
     assert welcome.restore["password"] == state.secrets["move_in_password"]

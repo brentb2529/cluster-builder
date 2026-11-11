@@ -2,6 +2,8 @@
 
 ## 0.2.1
 
+- Fixed: the first node reported a VM disk smaller than it made (the Home Assistant OS image is 32 GB and a disk cannot shrink below it); the size now starts at the image's own size and the message says what the VM really got.
+- Step 5 opens the address the move-in actually used (Home Assistant OS 18 serves on port 80) instead of always saying :8123, and no longer repeats "restoring your backup" twice. Step 4 says "No machine has asked to boot yet" only while no machine is assigned.
 - Fixed: "Start over (forget all machines)" kept which box was which node, so an old node that rebooted after it would have been reinstalled without anyone clicking. It now forgets the assignments too; every machine is listed again and installed only once you say which node it is.
 - Fixed: the move-in reported "Failed: Server disconnected" (or later "already set up") when the new Home
   Assistant restarted into the restore before answering the request; it now waits for the restored Home Assistant

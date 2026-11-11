@@ -177,6 +177,11 @@ if [ "$VM_ENABLED" = 1 ]; then
       [ "$VM_CORES" -lt 1 ] && VM_CORES=1; [ "$VM_CORES" -gt "$NODE_CORES" ] && VM_CORES=$NODE_CORES
       POOL_GB=$(zfs list -Hp -o available rpool 2>/dev/null | awk '{print int($1/1073741824)}'); POOL_GB=${POOL_GB:-0}
       [ "$POOL_GB" -gt 0 ] && [ "$VM_DISK_GB" -gt $((POOL_GB / 2)) ] && VM_DISK_GB=$((POOL_GB / 2))
+      # the disk can only grow from the image's own size (Home Assistant OS ships a 32 GB image); it is thin, so
+      # only what Home Assistant writes takes space on the pool
+      IMG_BYTES=$(qemu-img info --output=json "$IMG" 2>/dev/null | sed -n 's/.*"virtual-size": *\([0-9]*\).*/\1/p' | head -1)
+      IMG_GB=$(( (${IMG_BYTES:-0} + 1073741823) / 1073741824 ))
+      [ "$VM_DISK_GB" -lt "$IMG_GB" ] && VM_DISK_GB=$IMG_GB
       VM_SIZE="${VM_MEMORY} MB memory, ${VM_CORES} cores, ${VM_DISK_GB} GB disk (this node: ${NODE_MB} MB, ${NODE_CORES} cores, ${POOL_GB} GB free)"
       say image "sizing the VM: $VM_SIZE"
       # the other nodes join while this runs, and every join restarts the cluster filesystem here for a moment

@@ -123,6 +123,7 @@ async def run(state: State, ip: str, resumed: bool = False) -> None:
                     status, steps = await _onboarding(session, b)
                     if await _set_up(session, b, status, steps):
                         if resumed or state.d["move_in"].get("uploaded"):
+                            state.d["move_in"]["url"] = b
                             log("done", f"Your Home Assistant now runs on the cluster at {b}")
                             return
                         log(
@@ -134,6 +135,8 @@ async def run(state: State, ip: str, resumed: bool = False) -> None:
                         return
                     if status == 200 and isinstance(steps, list):
                         base = b
+                        state.d["move_in"]["url"] = b  # the page sends you to the same address later
+                        state.save()
                         break
                 if base:
                     break
@@ -208,7 +211,7 @@ async def run(state: State, ip: str, resumed: bool = False) -> None:
                         return
             except (TimeoutError, aiohttp.ClientError):
                 pass  # it restarts into the restore before answering: that is the restore starting
-            log("restoring", "the new Home Assistant is restoring your backup and restarting (several minutes)")
+            log("restoring", "it restarts while it restores, which takes several minutes")
             await asyncio.sleep(SETTLE)
             what = await _wait_restored(session, bases, time.time() + WAIT_RESTORE)
             if what == "done":
