@@ -3,7 +3,7 @@
 ## 0.2.1
 
 - Fixed: the move-in gave up with "refused the backup: 404" when it caught the new Home Assistant in the seconds
-  between its frontend and its onboarding API coming up; it now keeps trying through 401/404/5xx until its deadline.
+  between its frontend and its onboarding API coming up; it now keeps trying through 401/404/5xx and dropped connections until its deadline.
 - A node whose first boot failed runs it again (freshly fetched from the add-on) when it is turned on again,
   so the page's advice works and a fix in the add-on reaches it.
 - Fixed: the first node could fail creating the VM with "cluster not ready - no quorum?": every other node's join

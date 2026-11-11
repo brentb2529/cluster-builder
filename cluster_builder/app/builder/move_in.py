@@ -127,18 +127,23 @@ async def run(state: State, ip: str, resumed: bool = False) -> None:
             # for some minutes. Keep trying; a 4xx other than those is a real refusal.
             deadline = time.time() + WAIT_UPLOAD
             while True:
-                with backup.open("rb") as f:
-                    data = aiohttp.FormData()
-                    data.add_field("file", f, filename=BACKUP_FILE, content_type="application/x-tar")
-                    async with session.post(
-                        f"{base}/api/onboarding/backup/upload", params={"agent_id": AGENT}, data=data
-                    ) as r:
-                        if r.status in (200, 201):
-                            backup_id = (await r.json(content_type=None))["backup_id"]
-                            break
-                        text = (await r.text())[:200]
-                if (r.status not in (401, 404) and r.status < 500) or time.time() > deadline:
-                    log("failed", f"the new Home Assistant refused the backup: {r.status} {text}")
+                status, text = 0, ""
+                try:
+                    with backup.open("rb") as f:
+                        data = aiohttp.FormData()
+                        data.add_field("file", f, filename=BACKUP_FILE, content_type="application/x-tar")
+                        async with session.post(
+                            f"{base}/api/onboarding/backup/upload", params={"agent_id": AGENT}, data=data
+                        ) as r:
+                            status = r.status
+                            if status in (200, 201):
+                                backup_id = (await r.json(content_type=None))["backup_id"]
+                                break
+                            text = (await r.text())[:200]
+                except (TimeoutError, aiohttp.ClientError) as err:
+                    text = f"{type(err).__name__}: {err}"  # it hung up on us mid-upload: still starting, try again
+                if (status not in (0, 401, 404) and status < 500) or time.time() > deadline:
+                    log("failed", f"the new Home Assistant refused the backup: {status} {text}")
                     return
                 log("uploading", f"the new Home Assistant is still getting ready ({text.strip()}); trying again")
                 await asyncio.sleep(POLL)
