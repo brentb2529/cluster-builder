@@ -268,6 +268,9 @@ class State:
             nodes = []
             for i, n in enumerate(new["nodes"][:3]):
                 name = str(n.get("name") or f"pve{i + 1}").strip()
+                old = s["nodes"][i] if i < len(s["nodes"]) else {}
+                # the form only carries what it shows: a machine assigned under step 4 (boot_mac) must survive a Save
+                boot_mac = n["boot_mac"] if "boot_mac" in n else old.get("boot_mac", "")
                 nodes.append(
                     {
                         "name": name,
@@ -276,7 +279,7 @@ class State:
                         "link_ip": str(n.get("link_ip", "")).strip(),
                         "lan_mac": str(n.get("lan_mac", "")).strip().lower(),
                         "link_mac": str(n.get("link_mac", "")).strip().lower(),
-                        "boot_mac": str(n.get("boot_mac", "")).strip().lower().replace("-", ":"),
+                        "boot_mac": str(boot_mac or "").strip().lower().replace("-", ":"),
                     }
                 )
             s["nodes"] = nodes

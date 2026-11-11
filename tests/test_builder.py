@@ -604,3 +604,14 @@ def test_vm_sizes_are_automatic_unless_fixed(state: State) -> None:
     assert answers.vm_auto(state)["disk_gb"] == 32
     state.settings["vm"]["disk_gb"] = 100
     assert "VM_DISK_GB=100" in answers.env_for(state, "pve1").replace("'", "").replace('"', "")
+
+
+def test_saving_the_form_keeps_assigned_machines(state: State) -> None:
+    """A Save carries only the form's fields: the machine assigned under step 4 must not be forgotten."""
+    state.d["machines"]["aa:bb:cc:dd:ee:01"] = {"first": 1, "last": 1, "count": 1, "from": "x"}
+    assert state.assign_machine("aa:bb:cc:dd:ee:01", "pve2") == ""
+    state.update_settings({"nodes": [{"name": n["name"], "ip": n["ip"]} for n in state.settings["nodes"]]}, None)
+    assert state.settings["nodes"][1]["boot_mac"] == "aa:bb:cc:dd:ee:01"
+    assert state.netboot_decision("aa:bb:cc:dd:ee:01", "x")[0] == "install"
+    state.update_settings({"nodes": [{"name": "pve1"}, {"name": "pve2", "boot_mac": ""}]}, None)
+    assert state.settings["nodes"][1]["boot_mac"] == ""  # an explicit empty value does clear it

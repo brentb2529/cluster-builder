@@ -2,6 +2,8 @@
 
 ## 0.2.1
 
+- Fixed: pressing Save in step 1 forgot which machine was assigned to which node (the nodes were then told
+  "not one of the nodes yet" at their next network boot).
 - Node cards show progress while a box loads and starts the network installer (kernel, files, image handed over,
   "starting the installer, 2 to 5 minutes"), a step-of-N bar, and green instead of orange while busy.
 - Fixed: the machine list and node cards were rebuilt on every 3 s poll, so a click during a rebuild went nowhere
