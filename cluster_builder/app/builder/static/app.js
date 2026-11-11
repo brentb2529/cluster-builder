@@ -154,6 +154,7 @@
     dl.classList.toggle("disabled", !s.iso_ready);
     dl.href = s.iso_ready ? `download/${s.iso_name}` : "#";
     $("#iso-url").textContent = s.iso_ready ? `${s.settings.builder_url.replace(/\/$/, "")}/iso/${s.iso_token}/${s.iso_name}` : "(after the build)";
+    $("#ssh-public").textContent = s.ssh_public || "";
     $("#pve-url").textContent = `https://${s.settings.nodes[0].ip || "<node address>"}:8006`;
     form.elements.vm_move_in.disabled = !s.supervisor;
     $("#movein-hint").hidden = !s.supervisor;

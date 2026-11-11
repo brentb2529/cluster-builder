@@ -9,6 +9,8 @@
   install, so "network first" in the firmware is safe to leave on.
 - Step 1 chooses between the network and a USB stick; the stick path is unchanged.
 - The add-on needs UDP port 69 for the boot loader (shown on the page if it cannot open it).
+- Known gap: a node reinstalled after all three joined cannot join on its own (the build key is gone); DOCS says
+  what to do by hand until the add-on handles node replacement.
 
 ## 0.1.2
 

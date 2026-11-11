@@ -93,3 +93,12 @@ whenever you like.
 ## Options
 
 `log_level`: how much the add-on writes to its log.
+
+## Reinstalling a node later
+
+The build key is removed from the cluster once the last node has joined, so a node you reinstall after that
+(with **Allow reinstall** on its card) installs fine but cannot join: its log says "unable to copy ssh ID ...
+Permission denied". Until the add-on handles this itself, put the key back on a working node first: copy the
+key shown under *Advanced* on the page into `/etc/pve/priv/authorized_keys` on any node (one line), remove the
+old node from the cluster (`pvecm delnode <name>`) and delete its replication job, then let the reinstalled
+node reboot into its first boot. The last node to join removes the key again.
