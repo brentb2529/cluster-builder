@@ -86,13 +86,18 @@
   const sigs = {};
   const changed = (key, sig) => { if (sigs[key] === sig) return false; sigs[key] = sig; return true; };
   const tickAgo = () => document.querySelectorAll("[data-ago]").forEach((el) => { el.textContent = ago(+el.dataset.ago); });
+  const tickMachines = (s) => document.querySelectorAll("#machines [data-mac-info]").forEach((el) => {
+    const m = (s.machines || {})[el.dataset.macInfo]; if (!m) return;
+    el.querySelector("[data-ago]").dataset.ago = m.last || 0;
+    el.querySelector("[data-count]").textContent = `${m.count} time${m.count === 1 ? "" : "s"}`;
+  });
   const renderMachines = (s) => {
     const macs = Object.keys(s.machines || {}).sort((a, b) => (s.machines[a].first || 0) - (s.machines[b].first || 0));
-    const sig = JSON.stringify([macs, macs.map((m) => [s.machines[m].count, s.machines[m].from]), s.settings.nodes.map((n) => n.name), s.settings.install_method]);
-    if (!changed("machines", sig)) return;
+    const sig = JSON.stringify([macs, macs.map((m) => s.machines[m].from), s.settings.nodes.map((n) => n.name), s.settings.install_method]);
+    if (!changed("machines", sig)) { tickMachines(s); tickAgo(); return; }
     $("#machines").innerHTML = macs.map((mac) => {
       const m = s.machines[mac];
-      return `<div class="machine-row"><span><b class="mono">${esc(mac)}</b> <span class="msg">asked <span data-ago="${m.last || 0}">${esc(ago(m.last))}</span>${m.from ? ` from ${esc(m.from)}` : ""}, ${m.count} time${m.count === 1 ? "" : "s"}</span></span>
+      return `<div class="machine-row" data-mac-info="${esc(mac)}"><span><b class="mono">${esc(mac)}</b> <span class="msg">asked <span data-ago="${m.last || 0}">${esc(ago(m.last))}</span>${m.from ? ` from ${esc(m.from)}` : ""}, <span data-count>${m.count} time${m.count === 1 ? "" : "s"}</span></span></span>
         <span>${s.settings.nodes.map((n) => `<button data-mac="${esc(mac)}" data-node="${esc(n.name)}">This is ${esc(n.name)}</button>`).join(" ")}
         <button data-mac="${esc(mac)}" data-forget="1">Not one of mine</button></span></div>`;
     }).join("") || `<p class="msg">${s.settings.install_method === "network" ? "No machine has asked to boot yet." : ""}</p>`;
