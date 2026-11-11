@@ -116,8 +116,8 @@
         or set it to server <code id="net-server"></code>, file <code>ipxe.efi</code>.</li>
       <li><b>Each box, once.</b> Start it with a keyboard and screen, enter the firmware setup (Del or F2 on most mini
         PCs), turn <b>Secure Boot off</b> (the network boot loader is not signed), enable network boot (PXE, IPv4) and put it
-        <b>before</b> the disk. From then on it never needs a stick. The box needs <b>4 GB of memory or more</b>: the installer
-        runs from memory.</li>
+        <b>before</b> the disk. From then on it never needs a stick. The box needs <b>8 GB of memory or more</b>: the installer
+        and its 1.7 GB image run from memory (4 GB is not enough).</li>
       <li><b>Turn the boxes on.</b> Each one appears under step 4 as it asks to boot; say which node it is. It installs
         itself, restarts, and finishes alone. Any machine you do not assign is told to start from its own disk, so
         nothing else on your network can be wiped.</li>

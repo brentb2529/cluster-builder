@@ -2,6 +2,7 @@
 
 ## 0.2.1
 
+- Docs: a network-installed box needs 8 GB of memory, not 4 (the installer image lives in memory; 4 GB panics).
 - Page: says whose MAC address the VM field is (made up for the new VM, nothing to look up) and shows this Home
   Assistant's own address and MAC next to it.
 - Fixed: the page refreshed every field from the server every 3 s while you were still editing, so a changed
