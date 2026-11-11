@@ -142,6 +142,8 @@
     $("#net-server").textContent = (s.settings.builder_url.match(/\/\/([^/:]+)/) || [])[1] || "<this Home Assistant's address>";
     $("#tftp-error").hidden = !(net && s.tftp_error);
     $("#tftp-error").textContent = s.tftp_error ? `The boot-loader port (UDP 69) could not be opened: ${s.tftp_error}. Network boot will not work until the add-on can use it; the stick still does.` : "";
+    $("#dhcp-error").hidden = !(net && s.dhcp_error);
+    $("#dhcp-error").textContent = s.dhcp_error ? `The add-on cannot answer network-boot requests itself (UDP 67/4011: ${s.dhcp_error}). Set your router's network-boot (PXE) option to server ${$("#net-server").textContent}, file ipxe.efi instead (UniFi: Settings > Networks > your network > DHCP > Network Boot; other routers call these DHCP options 66 and 67).` : "";
     $("#free").textContent = `${(s.free_mb / 1024).toFixed(1)} GB`;
     $("#problems").innerHTML = s.problems.map((p) => `<li>${esc(p)}</li>`).join("");
     const b = s.build;

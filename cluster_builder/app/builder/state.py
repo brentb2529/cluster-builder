@@ -408,21 +408,42 @@ class State:
         """What a machine asking to network-boot gets: "install" / "local" for a known node, else "unknown"
         (and it is remembered so the page can offer to assign it)."""
         mac = mac.lower().replace("-", ":")
-        for name in self.node_names():
+        name = self.node_for_mac(mac)
+        if name is not None:
             node = self.nodes[name]
-            ns = self.node_settings(name) or {}
-            known = set((node["machine"] or {}).get("macs", []))
-            known |= {m for m in (ns.get("boot_mac"), ns.get("lan_mac")) if m}
-            if mac in known:
-                if node["installed"] and not node["allow_reinstall"]:
-                    return "local", name
-                return "install", name
+            if node["installed"] and not node["allow_reinstall"]:
+                return "local", name
+            return "install", name
         m = self.d["machines"].setdefault(mac, {"first": time.time(), "count": 0, "from": remote})
         m["last"] = time.time()
         m["count"] += 1
         m["from"] = remote
         self.save()
         return "unknown", None
+
+    def node_for_mac(self, mac: str) -> str | None:
+        for name in self.node_names():
+            node = self.nodes[name]
+            ns = self.node_settings(name) or {}
+            known = set((node["machine"] or {}).get("macs", []))
+            known |= {m for m in (ns.get("boot_mac"), ns.get("lan_mac")) if m}
+            if mac in known:
+                return name
+        return None
+
+    def machine_asking(self, mac: str, loader: str) -> None:
+        """A machine's firmware asked where to boot from (ProxyDHCP): list it right away, before iPXE has loaded,
+        so the page shows something is happening. The count stays for /boot/<mac> calls."""
+        mac = mac.lower().replace("-", ":")
+        if self.node_for_mac(mac) is not None:
+            return
+        m = self.d["machines"].get(mac)
+        if m is None:
+            now = time.time()
+            self.d["machines"][mac] = {"first": now, "last": now, "count": 0, "from": f"firmware, wants {loader}"}
+            self.save()
+        else:
+            m["last"] = time.time()
 
     def assign_machine(self, mac: str, name: str) -> str:
         """Make the machine with *mac* node *name*; returns a reason when that is not allowed."""

@@ -1,5 +1,5 @@
 name: Cluster Builder
-version: 0.2.0
+version: 0.2.1
 slug: cluster_builder
 description: Build a three-node Proxmox cluster for Home Assistant over the network (or one USB stick), no command line.
 url: https://github.com/brentb2529/cluster-builder
@@ -17,12 +17,7 @@ homeassistant_api: true
 ingress: true
 panel_icon: mdi:server-network
 panel_title: Cluster Builder
-ports:
-  8808/tcp: 8808
-  69/udp: 69
-ports_description:
-  8808/tcp: Where the new machines fetch their install answers and report progress (keep it at 8808)
-  69/udp: Network boot (TFTP) - the machines fetch their boot loader here
+host_network: true  # answers the machines' network-boot broadcasts (UDP 67/4011) and serves TFTP (69) and :8808
 options:
   log_level: info
 schema:

@@ -484,3 +484,106 @@ async def test_tftp_serves_the_boot_loader_with_options(state: State, sockets, t
         assert (await loop.run_in_executor(None, missing))[:4] == struct.pack("!HH", 5, 1)
     finally:
         transport.close()
+
+
+def _discover(mac: bytes, arch: int | None = 7, user_class: bytes | None = None, msg_type: int = 1) -> bytes:
+    from builder import proxydhcp
+
+    head = bytes([1, 1, 6, 0]) + b"\x12\x34\x56\x78" + b"\0\0" + b"\x80\0" + b"\0" * 16 + mac + b"\0" * 10 + b"\0" * 192
+    opts = bytes([53, 1, msg_type, 60, 20]) + b"PXEClient:Arch:00007" + bytes([97, 3]) + b"abc"
+    if arch is not None:
+        opts += bytes([93, 2]) + arch.to_bytes(2, "big")
+    if user_class:
+        opts += bytes([77, len(user_class)]) + user_class
+    return head + proxydhcp.MAGIC + opts + b"\xff"
+
+
+def test_proxydhcp_answers_only_pxe_discovers_with_the_right_loader(state: State) -> None:
+    """The offer carries no address, only this add-on as boot server and the loader for the firmware type."""
+    from builder import proxydhcp
+
+    sent: list[tuple[bytes, tuple]] = []
+
+    class T:
+        def sendto(self, data, addr):
+            sent.append((data, addr))
+
+    asked: list[tuple[str, str]] = []
+    proto = proxydhcp.ProxyDHCP(lambda: "192.168.1.5", lambda mac, loader: asked.append((mac, loader)), 67)
+    proto.connection_made(T())
+    mac = bytes.fromhex("525400aabbcc")
+    proto.datagram_received(_discover(mac), ("0.0.0.0", 68))
+    assert asked == [("52:54:00:aa:bb:cc", "ipxe.efi")]
+    data, dest = sent[-1]
+    assert dest == ("255.255.255.255", 68)
+    assert data[0] == 2 and data[4:8] == b"\x12\x34\x56\x78" and data[16:20] == b"\0\0\0\0", "a reply with no address"
+    assert data[20:24] == bytes([192, 168, 1, 5]) and data[28:34] == mac
+    assert data[108:].startswith(b"ipxe.efi\0")
+    reply = proxydhcp.parse(bytes([1]) + data[1:])  # parse() wants a request; the option layout is the same
+    assert reply is not None and reply.msg_type == 2 and reply.vendor_class == b"PXEClient" and reply.uuid == b"abc"
+    # legacy BIOS, arm64, iPXE itself, an unknown firmware type
+    proto.datagram_received(_discover(mac, arch=0), ("0.0.0.0", 68))
+    assert sent[-1][0][108:].startswith(b"undionly.kpxe\0")
+    proto.datagram_received(_discover(mac, arch=None), ("0.0.0.0", 68))
+    assert sent[-1][0][108:].startswith(b"undionly.kpxe\0")
+    proto.datagram_received(_discover(mac, arch=11), ("0.0.0.0", 68))
+    assert sent[-1][0][108:].startswith(b"ipxe-arm64.efi\0")
+    proto.datagram_received(_discover(mac, user_class=b"iPXE"), ("0.0.0.0", 68))
+    assert sent[-1][0][108:].startswith(b"autoexec.ipxe\0")
+    n = len(sent)
+    proto.datagram_received(_discover(mac, arch=0x1234), ("0.0.0.0", 68))
+    # not for us: a REQUEST on 67, a plain (non-PXE) client, a reply, junk
+    proto.datagram_received(_discover(mac, msg_type=3), ("0.0.0.0", 68))
+    plain = _discover(mac).replace(b"PXEClient:Arch:00007", b"MSFT 5.0:Arch:00007")
+    proto.datagram_received(plain, ("0.0.0.0", 68))
+    proto.datagram_received(bytes([2]) + _discover(mac)[1:], ("0.0.0.0", 68))
+    proto.datagram_received(b"hello", ("0.0.0.0", 68))
+    assert len(sent) == n
+    # the machine shows up on the page right away; a machine already assigned to a node does not
+    state.machine_asking("52:54:00:aa:bb:cc", "ipxe.efi")
+    assert state.d["machines"]["52:54:00:aa:bb:cc"]["from"] == "firmware, wants ipxe.efi"
+    assert state.assign_machine("52:54:00:aa:bb:cc", "pve2") == ""
+    state.machine_asking("52:54:00:aa:bb:cc", "ipxe.efi")
+    assert "52:54:00:aa:bb:cc" not in state.d["machines"]
+    # no server address known (builder_url not an IP): stay quiet
+    quiet = proxydhcp.ProxyDHCP(lambda: None, None, 67)
+    quiet.connection_made(T())
+    quiet.datagram_received(_discover(mac), ("0.0.0.0", 68))
+    assert len(sent) == n
+
+
+async def test_proxydhcp_boot_server_port_answers_the_asker(sockets) -> None:
+    """A PXE boot-server REQUEST on the 4011 port gets an ACK back to where it came from (unicast)."""
+    import socket
+
+    from builder import proxydhcp
+
+    loop = asyncio.get_running_loop()
+    free = []
+    for _ in range(2):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.bind(("127.0.0.1", 0))
+        free.append(s.getsockname()[1])
+        s.close()
+    transports = await proxydhcp.start(lambda: "127.0.0.1", None, (free[0], free[1]), host="127.0.0.1")
+    try:
+        client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        client.bind(("127.0.0.1", 0))
+        client.settimeout(2)
+        client.sendto(_discover(bytes.fromhex("525400aabbcc"), msg_type=3), ("127.0.0.1", free[1]))
+        data = await loop.run_in_executor(None, lambda: client.recvfrom(1500)[0])
+        reply = proxydhcp.parse(bytes([1]) + data[1:])
+        assert reply is not None and reply.msg_type == 5 and data[108:].startswith(b"ipxe.efi\0")
+        # a DISCOVER on the boot-server port is ignored, a REQUEST on the DHCP port too
+        client.sendto(_discover(bytes.fromhex("525400aabbcc")), ("127.0.0.1", free[1]))
+        client.sendto(_discover(bytes.fromhex("525400aabbcc"), msg_type=3), ("127.0.0.1", free[0]))
+        client.settimeout(0.3)
+        try:
+            await loop.run_in_executor(None, lambda: client.recvfrom(1500))
+            raise AssertionError("unexpected reply")
+        except TimeoutError:
+            pass
+        client.close()
+    finally:
+        for t in transports:
+            t.close()

@@ -23,9 +23,10 @@ the one-minute copies. The page shows every node's progress.
    the new Home Assistant takes over your old one's address. Save.
 3. **Build.** Downloads the installer and the OS image and writes the stick image. A few minutes.
 4. **Write the stick** with Raspberry Pi Imager (Use custom) or Etcher. Everything on the stick is erased.
-5. **Boot the machines.** Over the network (the default): set your router's network-boot option (DHCP options
-   66/67; in UniFi *Networks > your network > DHCP > Network Boot*) to this Home Assistant's address and the file
-   `ipxe.efi`, then in each box's firmware once: turn Secure Boot off (the boot loader is not signed), enable network boot
+5. **Boot the machines.** Over the network (the default): nothing to set on the router, the add-on answers the
+   machines' network-boot requests itself next to the router's DHCP (ProxyDHCP; if your router already has a
+   network-boot/PXE option pointing elsewhere, clear it or point it at this Home Assistant and the file `ipxe.efi`).
+   In each box's firmware once: turn Secure Boot off (the boot loader is not signed), enable network boot
    and put it before the disk (the box needs 4 GB of memory or more, the installer runs from memory), then turn them
    on. Each
    box appears under step 4 as it asks to boot; say which node it is and it installs itself, restarts and finishes

@@ -1,7 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.2.1
 
+- Network install needs **no router change**: the add-on answers the machines' network-boot requests itself
+  (ProxyDHCP on UDP 67 and 4011, next to the router's own DHCP), so the router's network-boot option is only a
+  fallback. The add-on now uses the host's network for that (the port list is gone). A machine is listed under
+  step 4 as soon as its firmware asks, before the boot loader has even loaded.
 - Docs: the network boot loader is unsigned, so Secure Boot must be off on each box (page and DOCS say so now).
 
 ## 0.2.0

@@ -7,14 +7,16 @@ import asyncio
 import json
 import logging
 import os
+import socket
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import aiohttp
 from aiohttp import web
 
-from . import answers, build, move_in, netboot, tftp
+from . import answers, build, move_in, netboot, proxydhcp, tftp
 from .state import State
 
 _LOGGER = logging.getLogger(__name__)
@@ -120,6 +122,7 @@ async def ui_state(request: web.Request) -> web.Response:
     pub["iso_ready"] = build.iso_ready(state)
     pub["netboot_ready"] = netboot.ready(state)
     pub["tftp_error"] = getattr(state, "tftp_error", "")
+    pub["dhcp_error"] = getattr(state, "dhcp_error", "")
     pub["free_mb"] = build.disk_free(state.downloads) >> 20
     pub["problems"] = state.validate()
     pub["now"] = time.time()
@@ -443,6 +446,14 @@ async def serve(state: State, ui_port: int = 8099, lan_port: int = 8808, dev: bo
         _LOGGER.warning(
             "TFTP port %s not available (%s): network boot will not work, the stick still does", tftp_port, err
         )
+    dhcp_ports = tuple(int(p) for p in os.environ.get("CB_DHCP_PORTS", "67,4011").split(","))
+    try:
+        await proxydhcp.start(lambda: _ipv4_host(state.settings["builder_url"]), state.machine_asking, dhcp_ports)
+        state.dhcp_error = ""  # type: ignore[attr-defined]
+        _LOGGER.info("ProxyDHCP (network boot answers) on UDP %s", "/".join(map(str, dhcp_ports)))
+    except OSError as err:
+        state.dhcp_error = str(err)  # type: ignore[attr-defined]
+        _LOGGER.warning("ProxyDHCP port not available (%s): the router must point network boot at this add-on", err)
     resume_move_in(state)  # an add-on restart (update, rebuild) must not strand a move-in half way
     try:
         while True:
@@ -450,6 +461,16 @@ async def serve(state: State, ui_port: int = 8099, lan_port: int = 8808, dev: bo
     finally:
         for r in runners:
             await r.cleanup()
+
+
+def _ipv4_host(url: str) -> str | None:
+    """The add-on's own address as the machines reach it, if builder_url names an IPv4 address."""
+    host = urlparse(url).hostname or ""
+    try:
+        socket.inet_aton(host)
+    except OSError:
+        return None
+    return host if host.count(".") == 3 else None
 
 
 def dumps(o: Any) -> str:
