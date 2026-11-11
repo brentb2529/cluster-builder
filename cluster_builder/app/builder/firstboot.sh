@@ -13,7 +13,10 @@ say() {
   curl -fsS -m 10 -X POST -H 'Content-Type: application/json' \
     -d "{\"phase\":$(json_escape "$1"),\"msg\":$(json_escape "${2:-}")}" "$B/status/$N/$S" >/dev/null 2>&1 || true
 }
-fail() { say failed "$1"; exit 1; }
+fail() {  # what went wrong, with the last lines the failing command printed (they are in this script's log)
+  local why; why=$(grep -v '^\[' /var/log/cluster-builder.log 2>/dev/null | tail -n 3 | tr '\n' ' ' | cut -c1-300)
+  say failed "$1${why:+ -- $why}"; exit 1
+}
 trap 'fail "line $LINENO: $BASH_COMMAND"' ERR
 set -e
 
@@ -150,6 +153,7 @@ rm -f /root/.ssh/id_ed25519
 # --- the Home Assistant VM: created on the first node, copied to every other node each minute
 if [ "$VM_ENABLED" = 1 ]; then
   if [ "$IS_FIRST" = 1 ]; then
+    wait_quorum || true  # pmxcfs is read-only without quorum, and it can lag right after the cluster was created
     if ! qm status "$VMID" >/dev/null 2>&1; then
       say image "$IMAGE_URL"
       IMG=/var/lib/vz/template/cluster-builder-vm.qcow2

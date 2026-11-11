@@ -2,6 +2,9 @@
 
 ## 0.2.1
 
+- Fixed: the first node could fail creating the VM with "cluster not ready - no quorum?" right after creating
+  the cluster (it now waits for quorum first). A failed first boot reports the failing command's own last
+  lines, not only the line number.
 - Fixed: pressing Save in step 1 forgot which machine was assigned to which node (the nodes were then told
   "not one of the nodes yet" at their next network boot).
 - Node cards show progress while a box loads and starts the network installer (kernel, files, image handed over,
