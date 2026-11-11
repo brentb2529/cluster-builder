@@ -50,15 +50,18 @@
         <label>Memory (MB) <input name="vm_memory" type="number" min="2048" step="1024"></label>
         <label>CPU cores <input name="vm_cores" type="number" min="1" max="16"></label>
         <label>Disk (GB) <input name="vm_disk_gb" type="number" min="32"></label>
-        <label>Its MAC address <input name="vm_mac" class="mono" pattern="[0-9A-Fa-f:]{17}"></label>
+        <label>MAC address for the new VM <input name="vm_mac" class="mono" pattern="[0-9A-Fa-f:]{17}"></label>
         <label class="check"><input type="checkbox" name="vm_move_in"> Move this Home Assistant onto it</label>
       </div>
       <p class="hint" id="movein-hint">With the move ticked, Build first takes a full backup of this Home Assistant (everything but this add-on).
         When the new VM boots its Welcome screen, the add-on restores that backup into it, and step 5 tells you
         when to shut this machine down. Without it, the new Home Assistant shows its Welcome screen for a manual restore.</p>
-      <p class="hint">Give that MAC address a DHCP reservation in your router now, so the new Home Assistant keeps the
-        address your old one has. Home Assistant OS will boot on the first node, download its core, and show its Welcome
-        screen, where you restore your backup.</p>
+      <p class="hint">The MAC address is made up here for the new Home Assistant VM. It is not from one of the new machines
+        and not from this Home Assistant (<span id="host-where">this machine</span>): there is nothing to look up. Give it a DHCP
+        reservation in your router now, so the new Home Assistant comes up at an address you know. It cannot share this
+        machine's address while both are running; once the move is done and this machine is off, you can give the VM's MAC
+        the old address if you want to keep it. Home Assistant OS will boot on the first node, download its core, and show
+        its Welcome screen.</p>
 
       <details>
         <summary>Advanced (leave alone unless you know why)</summary>

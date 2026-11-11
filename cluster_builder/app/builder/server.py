@@ -62,6 +62,7 @@ async def supervisor_defaults(state: State) -> dict[str, Any]:
                         if iface.get("primary") and addrs:
                             ip = addrs[0].split("/")[0]
                             out["host_ip"] = ip
+                            out["host_mac"] = (iface.get("mac") or "").upper()
                             gw = iface.get("ipv4", {}).get("gateway")
                             if gw:
                                 out["gateway"] = gw
@@ -83,6 +84,7 @@ def apply_defaults(state: State, d: dict[str, Any]) -> None:
     if d.get("country") and s["country"] == "us" and d["country"] != "us":
         s["country"] = d["country"]
         changed = True
+    state.host = {"ip": d.get("host_ip", ""), "mac": d.get("host_mac", "")}  # type: ignore[attr-defined]
     if not s["builder_url"] and d.get("host_ip"):
         s["builder_url"] = f"http://{d['host_ip']}:8808"
         changed = True
@@ -123,6 +125,7 @@ async def ui_state(request: web.Request) -> web.Response:
     pub["netboot_ready"] = netboot.ready(state)
     pub["tftp_error"] = getattr(state, "tftp_error", "")
     pub["dhcp_error"] = getattr(state, "dhcp_error", "")
+    pub["host"] = getattr(state, "host", {"ip": "", "mac": ""})
     pub["free_mb"] = build.disk_free(state.downloads) >> 20
     pub["problems"] = state.validate()
     pub["now"] = time.time()

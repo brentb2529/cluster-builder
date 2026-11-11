@@ -140,6 +140,8 @@
     $("#net-howto").hidden = !net;
     $("#stick-howto").hidden = net;
     if (net) renderMachines(s);
+    const host = s.host || {};
+    $("#host-where").textContent = host.ip ? `now at ${host.ip}${host.mac ? ", MAC " + host.mac : ""}` : "this machine";
     $("#net-server").textContent = (s.settings.builder_url.match(/\/\/([^/:]+)/) || [])[1] || "<this Home Assistant's address>";
     $("#tftp-error").hidden = !(net && s.tftp_error);
     $("#tftp-error").textContent = s.tftp_error ? `The boot-loader port (UDP 69) could not be opened: ${s.tftp_error}. Network boot will not work until the add-on can use it; the stick still does.` : "";

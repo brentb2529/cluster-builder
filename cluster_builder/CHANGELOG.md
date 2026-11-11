@@ -2,6 +2,8 @@
 
 ## 0.2.1
 
+- Page: says whose MAC address the VM field is (made up for the new VM, nothing to look up) and shows this Home
+  Assistant's own address and MAC next to it.
 - Fixed: the page refreshed every field from the server every 3 s while you were still editing, so a changed
   checkbox (or a field you had moved on from) was quietly reverted before Save. Nothing is refilled while the form
   has unsaved edits.
