@@ -65,6 +65,19 @@ def firstboot_for(state: State, name: str) -> str:
     return TEMPLATE.replace("@@URL@@", _url(state)).replace("@@NODE@@", name).replace("@@SECRET@@", sec)
 
 
+def vm_auto(state: State) -> dict:
+    """What the sizes come to when the page leaves them automatic (0). Memory and cores are decided on the first
+    node, where its hardware is known; the disk here, from what this Home Assistant uses now."""
+    used = float(getattr(state, "host", {}).get("disk_used_gb") or 0.0)
+    disk = max(32, int(-(-used * 2 // 8) * 8)) if used else 32  # twice today's use, rounded up to 8 GB
+    return {
+        "disk_gb": disk,
+        "host_disk_used_gb": round(used, 1),
+        "memory": "half of the node's, 2 to 8 GB",
+        "cores": "half of the node's",
+    }
+
+
 def env_for(state: State, name: str) -> str:
     """Shell-sourceable environment for the first-boot script."""
     s = state.settings
@@ -101,7 +114,7 @@ def env_for(state: State, name: str) -> str:
         "VM_NAME": vm["name"],
         "VM_MEMORY": vm["memory"],
         "VM_CORES": vm["cores"],
-        "VM_DISK_GB": vm["disk_gb"],
+        "VM_DISK_GB": vm["disk_gb"] or vm_auto(state)["disk_gb"],
         "VM_MAC": vm["mac"],
         "VM_QM_ARGS": vm["qm_args"],
         "IMAGE_URL": state.build.get("image_served_url", ""),

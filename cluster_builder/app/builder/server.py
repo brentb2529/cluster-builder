@@ -54,6 +54,11 @@ async def supervisor_defaults(state: State) -> dict[str, Any]:
                     cfg = await r.json()
                     out["timezone"] = cfg.get("time_zone", "")
                     out["country"] = (cfg.get("country") or "us").lower()
+            async with s.get(f"{SUPERVISOR}/host/info") as r:
+                if r.status == 200:
+                    host = (await r.json()).get("data", {})
+                    out["host_disk_used_gb"] = float(host.get("disk_used") or 0)
+                    out["host_disk_total_gb"] = float(host.get("disk_total") or 0)
             async with s.get(f"{SUPERVISOR}/network/info") as r:
                 if r.status == 200:
                     info = (await r.json()).get("data", {})
@@ -84,7 +89,12 @@ def apply_defaults(state: State, d: dict[str, Any]) -> None:
     if d.get("country") and s["country"] == "us" and d["country"] != "us":
         s["country"] = d["country"]
         changed = True
-    state.host = {"ip": d.get("host_ip", ""), "mac": d.get("host_mac", "")}  # type: ignore[attr-defined]
+    state.host = {  # type: ignore[attr-defined]
+        "ip": d.get("host_ip", ""),
+        "mac": d.get("host_mac", ""),
+        "disk_used_gb": d.get("host_disk_used_gb", 0.0),
+        "disk_total_gb": d.get("host_disk_total_gb", 0.0),
+    }
     if not s["builder_url"] and d.get("host_ip"):
         s["builder_url"] = f"http://{d['host_ip']}:8808"
         changed = True
@@ -125,7 +135,8 @@ async def ui_state(request: web.Request) -> web.Response:
     pub["netboot_ready"] = netboot.ready(state)
     pub["tftp_error"] = getattr(state, "tftp_error", "")
     pub["dhcp_error"] = getattr(state, "dhcp_error", "")
-    pub["host"] = getattr(state, "host", {"ip": "", "mac": ""})
+    pub["host"] = getattr(state, "host", {"ip": "", "mac": "", "disk_used_gb": 0.0, "disk_total_gb": 0.0})
+    pub["vm_auto"] = answers.vm_auto(state)
     pub["free_mb"] = build.disk_free(state.downloads) >> 20
     pub["problems"] = state.validate()
     pub["now"] = time.time()

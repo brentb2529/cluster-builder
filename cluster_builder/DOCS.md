@@ -29,7 +29,7 @@ the one-minute copies. The page shows every node's progress.
    machines' network-boot requests itself next to the router's DHCP (ProxyDHCP; if your router already has a
    network-boot/PXE option pointing elsewhere, clear it or point it at this Home Assistant and the file `ipxe.efi`).
    In each box's firmware once: turn Secure Boot off (the boot loader is not signed), enable network boot
-   and put it before the disk (the box needs 8 GB of memory or more: the installer and its 1.7 GB image run from memory, 4 GB panics), then turn them
+   and put it before the disk (the box needs 8 GB of memory or more: the installer and its 1.7 GB image are held in memory), then turn them
    on. Each
    box appears under step 4 as it asks to boot; say which node it is and it installs itself, restarts and finishes
    alone. With a stick instead: cable the box, boot it from the stick, it installs and **turns off**; remove the

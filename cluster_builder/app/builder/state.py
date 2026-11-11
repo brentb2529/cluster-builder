@@ -109,9 +109,9 @@ def default_settings() -> dict[str, Any]:
             "enabled": True,
             "vmid": 100,
             "name": "homeassistant",
-            "memory": 8192,
-            "cores": 2,
-            "disk_gb": 64,
+            "memory": 0,  # 0 = sized on the first node: half its memory, 2 to 8 GB
+            "cores": 0,  # 0 = half the node's cores
+            "disk_gb": 0,  # 0 = twice what this Home Assistant uses now, at least 32 GB
             "mac": "",
             "qm_args": "--machine q35 --cpu host",
         },

@@ -158,6 +158,18 @@ if [ "$VM_ENABLED" = 1 ]; then
         *) curl -fsSL --retry 5 "$IMAGE_URL" -o "$IMG" ;;
       esac
       VM_BRIDGE=vmbr0; [ -n "$LAN_IF" ] && VM_BRIDGE=vmbr1
+      # size it to this node when the page left memory/cores automatic (0), and never beyond what the node has
+      NODE_MB=$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo); NODE_CORES=$(nproc)
+      if [ "${VM_MEMORY:-0}" -le 0 ]; then
+        VM_MEMORY=$((NODE_MB / 2)); [ "$VM_MEMORY" -lt 2048 ] && VM_MEMORY=2048; [ "$VM_MEMORY" -gt 8192 ] && VM_MEMORY=8192
+      fi
+      [ "$VM_MEMORY" -gt $((NODE_MB - 1536)) ] && VM_MEMORY=$((NODE_MB - 1536))  # the node itself needs room
+      if [ "${VM_CORES:-0}" -le 0 ]; then VM_CORES=$((NODE_CORES / 2)); fi
+      [ "$VM_CORES" -lt 1 ] && VM_CORES=1; [ "$VM_CORES" -gt "$NODE_CORES" ] && VM_CORES=$NODE_CORES
+      POOL_GB=$(zfs list -Hp -o available rpool 2>/dev/null | awk '{print int($1/1073741824)}'); POOL_GB=${POOL_GB:-0}
+      [ "$POOL_GB" -gt 0 ] && [ "$VM_DISK_GB" -gt $((POOL_GB / 2)) ] && VM_DISK_GB=$((POOL_GB / 2))
+      VM_SIZE="${VM_MEMORY} MB memory, ${VM_CORES} cores, ${VM_DISK_GB} GB disk (this node: ${NODE_MB} MB, ${NODE_CORES} cores, ${POOL_GB} GB free)"
+      say image "sizing the VM: $VM_SIZE"
       # shellcheck disable=SC2086
       qm create "$VMID" --name "$VM_NAME" --ostype l26 --memory "$VM_MEMORY" --cores "$VM_CORES" $VM_QM_ARGS \
         --bios ovmf --efidisk0 local-zfs:1,efitype=4m,pre-enrolled-keys=0 --scsihw virtio-scsi-single \
@@ -169,7 +181,7 @@ if [ "$VM_ENABLED" = 1 ]; then
     wait_quorum || true
     ha-manager config 2>/dev/null | grep -q "^vm:$VMID" || ha-manager add "vm:$VMID" --state started --max_restart 1 --max_relocate 1
     ha-manager set "vm:$VMID" --state started
-    say vm_created "VM $VMID ($VM_NAME) is a failover resource; MAC $VM_MAC"
+    say vm_created "VM $VMID ($VM_NAME) is a failover resource; MAC $VM_MAC${VM_SIZE:+; $VM_SIZE}"
     if [ "${MOVE_IN:-0}" = 1 ]; then
       # the add-on restores the backup through the new Home Assistant's Welcome screen; it needs the VM's address.
       # Home Assistant OS runs the QEMU guest agent; until it is up, look the VM's MAC up on the bridge instead.

@@ -47,12 +47,11 @@
       <h3>The Home Assistant VM</h3>
       <div class="grid">
         <label class="check"><input type="checkbox" name="vm_enabled"> Create it on the first node, protected from the start</label>
-        <label>Memory (MB) <input name="vm_memory" type="number" min="2048" step="1024"></label>
-        <label>CPU cores <input name="vm_cores" type="number" min="1" max="16"></label>
-        <label>Disk (GB) <input name="vm_disk_gb" type="number" min="32"></label>
         <label>MAC address for the new VM (filled in for you) <input name="vm_mac" class="mono" pattern="[0-9A-Fa-f:]{17}"></label>
         <label class="check"><input type="checkbox" name="vm_move_in"> Move this Home Assistant onto it</label>
       </div>
+      <p class="hint" id="vm-size">Sized by itself: memory half of the first node's (2 to 8 GB), CPU cores half of its cores, and
+        <span id="vm-disk-auto">at least 32 GB</span> of disk. Nothing to work out; fixed sizes can be set under Advanced.</p>
       <p class="hint" id="movein-hint">With the move ticked, Build first takes a full backup of this Home Assistant (everything but this add-on).
         When the new VM boots its Welcome screen, the add-on restores that backup into it, and step 5 tells you
         when to shut this machine down. Without it, the new Home Assistant shows its Welcome screen for a manual restore.</p>
@@ -74,6 +73,9 @@
           <label>Country <input name="country"></label>
           <label>Keyboard <input name="keyboard"></label>
           <label>Extra VM options for qm create <input name="vm_qm_args"></label>
+          <label>VM memory (MB, 0 = automatic) <input name="vm_memory" type="number" min="0" step="1024"></label>
+          <label>VM CPU cores (0 = automatic) <input name="vm_cores" type="number" min="0" max="16"></label>
+          <label>VM disk (GB, 0 = automatic) <input name="vm_disk_gb" type="number" min="0"></label>
         </div>
         <table class="nodes">
           <thead><tr><th>Node</th><th>Cluster address (if not the node address)</th><th>LAN port MAC</th><th>Link port MAC</th></tr></thead>
@@ -117,7 +119,7 @@
       <li><b>Each box, once.</b> Start it with a keyboard and screen, enter the firmware setup (Del or F2 on most mini
         PCs), turn <b>Secure Boot off</b> (the network boot loader is not signed), enable network boot (PXE, IPv4) and put it
         <b>before</b> the disk. From then on it never needs a stick. The box needs <b>8 GB of memory or more</b>: the installer
-        and its 1.7 GB image run from memory (4 GB is not enough).</li>
+        and its 1.7 GB image are held in memory while it runs.</li>
       <li><b>Turn the boxes on.</b> Each one appears under step 4 as it asks to boot; say which node it is. It installs
         itself, restarts, and finishes alone. Any machine you do not assign is told to start from its own disk, so
         nothing else on your network can be wiped.</li>

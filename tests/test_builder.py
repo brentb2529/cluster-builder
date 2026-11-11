@@ -587,3 +587,20 @@ async def test_proxydhcp_boot_server_port_answers_the_asker(sockets) -> None:
     finally:
         for t in transports:
             t.close()
+
+
+def test_vm_sizes_are_automatic_unless_fixed(state: State) -> None:
+    from builder import answers
+
+    assert state.settings["vm"]["memory"] == 0 and state.settings["vm"]["disk_gb"] == 0
+    state.host = {"ip": "", "mac": "", "disk_used_gb": 21.3, "disk_total_gb": 120.0}
+    auto = answers.vm_auto(state)
+    assert auto["disk_gb"] == 48 and auto["host_disk_used_gb"] == 21.3  # 42.6 rounded up to 8 GB
+    env = answers.env_for(state, "pve1")
+    assert "VM_MEMORY=0" in env.replace("'", "").replace('"', "") and "VM_DISK_GB=48" in env.replace("'", "").replace(
+        '"', ""
+    )
+    state.host["disk_used_gb"] = 0.0
+    assert answers.vm_auto(state)["disk_gb"] == 32
+    state.settings["vm"]["disk_gb"] = 100
+    assert "VM_DISK_GB=100" in answers.env_for(state, "pve1").replace("'", "").replace('"', "")

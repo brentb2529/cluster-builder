@@ -2,10 +2,13 @@
 
 ## 0.2.1
 
+- The Home Assistant VM is sized by the add-on: memory half of the first node's (2 to 8 GB) and cores half of its,
+  decided on the node itself; disk twice what this Home Assistant uses today, at least 32 GB, never more than half
+  the node's pool. Fixed sizes moved under Advanced (0 = automatic).
 - A node that took the network installer and went silent (no answers request within 5 min) is called out on its
   card with the likely cause (too little memory, or it booted from disk) and what to do; same for an installer that
   stops reporting.
-- Docs: a network-installed box needs 8 GB of memory, not 4 (the installer image lives in memory; 4 GB panics).
+- Docs: a network-installed box needs 8 GB of memory, not 4 (the installer image is held in memory).
 - Page: says whose MAC address the VM field is (made up for the new VM, nothing to look up) and shows this Home
   Assistant's own address and MAC next to it.
 - Fixed: the page refreshed every field from the server every 3 s while you were still editing, so a changed

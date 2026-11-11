@@ -146,6 +146,8 @@
     $("#stick-howto").hidden = net;
     if (net) renderMachines(s);
     const host = s.host || {};
+    const va = s.vm_auto || {};
+    $("#vm-disk-auto").textContent = va.host_disk_used_gb ? `${va.disk_gb} GB of disk (twice the ${va.host_disk_used_gb} GB this Home Assistant uses now)` : `${va.disk_gb || 32} GB of disk`;
     $("#host-where").textContent = host.ip ? `now at ${host.ip}${host.mac ? ", MAC " + host.mac : ""}` : "this machine";
     $("#net-server").textContent = (s.settings.builder_url.match(/\/\/([^/:]+)/) || [])[1] || "<this Home Assistant's address>";
     $("#tftp-error").hidden = !(net && s.tftp_error);
