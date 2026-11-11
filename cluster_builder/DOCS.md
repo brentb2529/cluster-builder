@@ -22,7 +22,9 @@ the one-minute copies. The page shows every node's progress.
    Guard later). The page makes up a MAC address for the new Home Assistant VM (it is not one of the new
    machines' and not this Home Assistant's; nothing to look up): give it a DHCP reservation in your router so
    the new Home Assistant comes up at an address you know. It cannot have this machine's address while both
-   run; after the move, when the old machine is off, you can hand the old address to the VM's MAC. Save.
+   run; after the move, when the old machine is off, you can hand the old address to the VM's MAC. The VM's size
+   is worked out for you: memory half of the first node's (2 to 8 GB) and half its CPU cores, decided on the node;
+   disk twice what this Home Assistant uses today, at least 32 GB. Fixed sizes go under Advanced. Save.
 3. **Build.** Downloads the installer and the OS image and writes the stick image. A few minutes.
 4. **Write the stick** with Raspberry Pi Imager (Use custom) or Etcher. Everything on the stick is erased.
 5. **Boot the machines.** Over the network (the default): nothing to set on the router, the add-on answers the
