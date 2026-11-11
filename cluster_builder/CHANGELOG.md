@@ -2,6 +2,8 @@
 
 ## 0.2.1
 
+- A node whose first boot failed runs it again (freshly fetched from the add-on) when it is turned on again,
+  so the page's advice works and a fix in the add-on reaches it.
 - Fixed: the first node could fail creating the VM with "cluster not ready - no quorum?" right after creating
   the cluster (it now waits for quorum first). A failed first boot reports the failing command's own last
   lines, not only the line number.

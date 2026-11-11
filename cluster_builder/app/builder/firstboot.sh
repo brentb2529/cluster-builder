@@ -15,7 +15,12 @@ say() {
 }
 fail() {  # what went wrong, with the last lines the failing command printed (they are in this script's log)
   local why; why=$(grep -v '^\[' /var/log/cluster-builder.log 2>/dev/null | tail -n 3 | tr '\n' ' ' | cut -c1-300)
-  say failed "$1${why:+ -- $why}"; exit 1
+  say failed "$1${why:+ -- $why}"
+  # turning the box on again reruns the first boot (with the add-on's current script), as the page tells the user
+  mkdir -p /var/lib/proxmox-first-boot
+  curl -fsS -m 30 "$B/firstboot/$N/$S" -o /var/lib/proxmox-first-boot/pending-first-boot-setup 2>/dev/null \
+    && chmod +x /var/lib/proxmox-first-boot/pending-first-boot-setup || true
+  exit 1
 }
 trap 'fail "line $LINENO: $BASH_COMMAND"' ERR
 set -e
