@@ -14,7 +14,7 @@ from pathlib import Path
 
 import aiohttp
 
-from . import answers, supervisor
+from . import answers, netboot, supervisor
 from .state import HAOS_IMAGE_FALLBACK, HAOS_RELEASES_API, State
 
 _LOGGER = logging.getLogger(__name__)
@@ -160,12 +160,49 @@ async def run_build(state: State) -> None:
         if not tmp.exists():
             raise BuildError(f"the installer image was not written:\n{log[-1500:]}")
         tmp.replace(out)
+        b["netboot"] = None
+        if s.get("install_method") == "network":
+            b["step"] = "taking the kernel and initrd out of it for network boot"
+            state.save()
+            b["netboot"] = await netboot_files(out, state.downloads)
         b.update({"status": "done", "step": "ready", "progress": 1.0, "iso": str(out), "built_at": time.time()})
         state.save()
     except Exception as err:
         _LOGGER.exception("build failed")
         b.update({"status": "error", "error": str(err)})
         state.save()
+
+
+async def netboot_files(iso: Path, downloads: Path) -> dict[str, str]:
+    """Kernel, initrd and the auto-installer's command line from the built ISO (iPXE feeds the ISO itself to
+    the installer as /proxmox.iso, which is where its init looks for it)."""
+    kernel, initrd = downloads / netboot.KERNEL_FILE, downloads / netboot.INITRD_FILE
+    with tempfile.TemporaryDirectory() as d:
+        grub = Path(d) / "grub.cfg"
+        for f in (kernel, initrd):
+            f.unlink(missing_ok=True)
+        await _run(
+            "xorriso",
+            "-osirrox",
+            "on",
+            "-indev",
+            str(iso),
+            "-extract",
+            "/boot/linux26",
+            str(kernel),
+            "-extract",
+            "/boot/initrd.img",
+            str(initrd),
+            "-extract",
+            "/boot/grub/grub.cfg",
+            str(grub),
+        )
+        cmdline = netboot.auto_cmdline(grub.read_text(errors="replace")) if grub.exists() else netboot.DEFAULT_CMDLINE
+    for f in (kernel, initrd):
+        if not f.is_file() or f.stat().st_size == 0:
+            raise BuildError(f"could not take {f.name} out of the installer image")
+        f.chmod(0o644)
+    return {"kernel": kernel.name, "initrd": initrd.name, "cmdline": cmdline}
 
 
 def disk_free(path: Path) -> int:

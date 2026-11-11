@@ -1,5 +1,7 @@
 # Cluster Builder (Home Assistant add-on)
 
+Boxes can boot the installer **over the network** (iPXE from the add-on, no stick) or from one USB stick.
+
 Build a three-node Proxmox VE cluster for Home Assistant from one USB stick and one web page: no
 command line. Each machine boots from the stick, installs itself, joins the cluster, and the first one
 creates a Home Assistant OS VM protected by replication and automatic failover. Pair it with

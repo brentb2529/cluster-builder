@@ -28,7 +28,8 @@ HAOS_IMAGE_FALLBACK = (
 )
 
 PHASES = [
-    ("waiting", "Waiting for a machine to boot from the stick"),
+    ("waiting", "Waiting for a machine to boot the installer"),
+    ("netboot", "Booting the installer over the network"),
     ("installing", "Installing Proxmox"),
     ("installed", "Installed. Remove the stick when the machine turns itself off, then turn it on"),
     ("hello", "First boot started"),
@@ -60,6 +61,7 @@ MOVE_IN_PHASES = [
 
 def default_settings() -> dict[str, Any]:
     return {
+        "install_method": "network",  # or "stick"
         "cluster_name": "house",
         "domain": "home.arpa",
         "builder_url": "",
@@ -74,9 +76,33 @@ def default_settings() -> dict[str, Any]:
         "disk_filter": "/dev/nvme*",
         "link_prefix": "10.10.10.",
         "nodes": [
-            {"name": "pve1", "ip": "", "cluster_ip": "", "link_ip": "10.10.10.1", "lan_mac": "", "link_mac": ""},
-            {"name": "pve2", "ip": "", "cluster_ip": "", "link_ip": "10.10.10.2", "lan_mac": "", "link_mac": ""},
-            {"name": "pve3", "ip": "", "cluster_ip": "", "link_ip": "10.10.10.3", "lan_mac": "", "link_mac": ""},
+            {
+                "name": "pve1",
+                "ip": "",
+                "cluster_ip": "",
+                "link_ip": "10.10.10.1",
+                "lan_mac": "",
+                "link_mac": "",
+                "boot_mac": "",
+            },
+            {
+                "name": "pve2",
+                "ip": "",
+                "cluster_ip": "",
+                "link_ip": "10.10.10.2",
+                "lan_mac": "",
+                "link_mac": "",
+                "boot_mac": "",
+            },
+            {
+                "name": "pve3",
+                "ip": "",
+                "cluster_ip": "",
+                "link_ip": "10.10.10.3",
+                "lan_mac": "",
+                "link_mac": "",
+                "boot_mac": "",
+            },
         ],
         "vm": {
             "move_in": supervisor.available(),
@@ -221,6 +247,10 @@ class State:
         for name in list(self.nodes):
             if name not in self.node_names():
                 del self.nodes[name]
+        self.d.setdefault("machines", {})  # machines that asked to network-boot and are not assigned yet
+        self.settings.setdefault("install_method", "network")
+        for n in self.settings["nodes"]:
+            n.setdefault("boot_mac", "")
 
     # ---- settings
 
@@ -246,9 +276,12 @@ class State:
                         "link_ip": str(n.get("link_ip", "")).strip(),
                         "lan_mac": str(n.get("lan_mac", "")).strip().lower(),
                         "link_mac": str(n.get("link_mac", "")).strip().lower(),
+                        "boot_mac": str(n.get("boot_mac", "")).strip().lower().replace("-", ":"),
                     }
                 )
             s["nodes"] = nodes
+        if s.get("install_method") not in ("network", "stick"):
+            s["install_method"] = "network"
         if password:
             self.d["root_hash"] = hash_password(password)
         self._ensure_nodes()
@@ -331,6 +364,7 @@ class State:
         self.save()
 
     def reset_all(self) -> None:
+        self.d["machines"] = {}
         for name in list(self.nodes):
             self.reset_node(name)
         self.cluster.update({"created": False, "joining": None, "joining_since": 0, "vm_created": False})
@@ -357,7 +391,7 @@ class State:
                 return name, ""
         for name in self.node_names():
             ns = self.node_settings(name) or {}
-            if ns.get("lan_mac") and ns["lan_mac"] in macs:
+            if (ns.get("lan_mac") and ns["lan_mac"] in macs) or (ns.get("boot_mac") and ns["boot_mac"] in macs):
                 self.nodes[name]["machine"] = {"macs": macs, **info}
                 return name, ""
         for name in self.node_names():
@@ -367,6 +401,47 @@ class State:
                 node["machine"] = {"macs": macs, **info}
                 return name, ""
         return None, "all nodes are already assigned to machines"
+
+    # ---- network boot
+
+    def netboot_decision(self, mac: str, remote: str) -> tuple[str, str | None]:
+        """What a machine asking to network-boot gets: "install" / "local" for a known node, else "unknown"
+        (and it is remembered so the page can offer to assign it)."""
+        mac = mac.lower().replace("-", ":")
+        for name in self.node_names():
+            node = self.nodes[name]
+            ns = self.node_settings(name) or {}
+            known = set((node["machine"] or {}).get("macs", []))
+            known |= {m for m in (ns.get("boot_mac"), ns.get("lan_mac")) if m}
+            if mac in known:
+                if node["installed"] and not node["allow_reinstall"]:
+                    return "local", name
+                return "install", name
+        m = self.d["machines"].setdefault(mac, {"first": time.time(), "count": 0, "from": remote})
+        m["last"] = time.time()
+        m["count"] += 1
+        m["from"] = remote
+        self.save()
+        return "unknown", None
+
+    def assign_machine(self, mac: str, name: str) -> str:
+        """Make the machine with *mac* node *name*; returns a reason when that is not allowed."""
+        mac = mac.lower().replace("-", ":")
+        ns = self.node_settings(name)
+        if ns is None:
+            return "no such node"
+        node = self.nodes[name]
+        if node["installed"] and not node["allow_reinstall"]:
+            return f"{name} is already installed; press 'Allow reinstall' on it first"
+        for other in self.settings["nodes"]:
+            if other is not ns and other.get("boot_mac") == mac:
+                other["boot_mac"] = ""
+        ns["boot_mac"] = mac
+        if node["machine"] and mac not in node["machine"]["macs"]:
+            node["machine"] = None
+        self.d["machines"].pop(mac, None)
+        self.save()
+        return ""
 
     # ---- what the UI may see (no secrets)
 

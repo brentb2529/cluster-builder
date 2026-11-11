@@ -28,6 +28,7 @@
     for (const k of ["memory", "cores", "disk_gb", "mac", "qm_args"]) set("vm_" + k, s.vm[k]);
     form.elements.vm_enabled.checked = !!s.vm.enabled;
     form.elements.vm_move_in.checked = !!s.vm.move_in;
+    if (!form.contains(document.activeElement)) form.elements.install_method.value = s.install_method || "network";
     if (!form.contains(document.activeElement) || !dirty) {
       $("#nodes-rows").innerHTML = s.nodes.map(nodeRow).join("");
       $("#nodes-adv").innerHTML = s.nodes.map(nodeAdv).join("");
@@ -43,6 +44,7 @@
     const body = { nodes, vm: { enabled: f.vm_enabled.checked, move_in: f.vm_move_in.checked, memory: +f.vm_memory.value, cores: +f.vm_cores.value, disk_gb: +f.vm_disk_gb.value, qm_args: f.vm_qm_args.value, mac: f.vm_mac.value.trim().toUpperCase() } };
     for (const k of ["cluster_name", "domain", "gateway", "dns", "timezone", "builder_url", "iso_url", "image_url", "disk_filter", "country", "keyboard", "extra_firstboot"]) body[k] = f[k].value.trim();
     body.prefix = +f.prefix.value;
+    body.install_method = f.install_method.value || "network";
     if (f.password.value) body.password = f.password.value;
     return body;
   };
@@ -73,10 +75,30 @@
 
   const ago = (t) => { if (!t) return ""; const s = Math.round(state.now - t); return s < 90 ? `${s} s ago` : s < 5400 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`; };
   const esc = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const phaseText = (p) => (state.phases.find((x) => x[0] === p) || [p, p])[1];
+  const phaseText = (p) => {
+    if (p === "installed" && state.settings.install_method === "network") return "Installed, restarting into its first boot";
+    return (state.phases.find((x) => x[0] === p) || [p, p])[1];
+  };
+
+  const renderMachines = (s) => {
+    const macs = Object.keys(s.machines || {}).sort((a, b) => (s.machines[b].last || 0) - (s.machines[a].last || 0));
+    $("#machines").innerHTML = macs.map((mac) => {
+      const m = s.machines[mac];
+      return `<div class="machine-row"><span><b class="mono">${esc(mac)}</b> <span class="msg">asked ${esc(ago(m.last))}${m.from ? ` from ${esc(m.from)}` : ""}, ${m.count} time${m.count === 1 ? "" : "s"}</span></span>
+        <span>${s.settings.nodes.map((n) => `<button data-mac="${esc(mac)}" data-node="${esc(n.name)}">This is ${esc(n.name)}</button>`).join(" ")}
+        <button data-mac="${esc(mac)}" data-forget="1">Not one of mine</button></span></div>`;
+    }).join("") || `<p class="msg">${s.settings.install_method === "network" ? "No machine has asked to boot yet." : ""}</p>`;
+    document.querySelectorAll("#machines button").forEach((b) => b.addEventListener("click", async () => {
+      try {
+        if (b.dataset.forget) await api(`api/machine/${encodeURIComponent(b.dataset.mac)}/forget`, {});
+        else await api(`api/machine/${encodeURIComponent(b.dataset.mac)}/assign`, { node: b.dataset.node });
+        refresh();
+      } catch (err) { $("#build-error").textContent = err.message; $("#build-error").hidden = false; }
+    }));
+  };
 
   const renderNodes = (s) => {
-    const active = new Set(["installing", "hello", "network", "packages", "cluster_created", "waiting_cluster", "joining", "joined", "image", "vm_created", "replicating"]);
+    const active = new Set(["netboot", "installing", "hello", "network", "packages", "cluster_created", "waiting_cluster", "joining", "joined", "image", "vm_created", "replicating"]);
     $("#node-cards").innerHTML = s.nodes.map((ns) => {
       const n = s.nodes_state[ns.name] || {};
       const cls = n.phase === "done" ? "done" : n.phase === "failed" ? "failed" : active.has(n.phase) ? "active" : "";
@@ -86,7 +108,7 @@
         <h4><span>${esc(ns.name)} <small class="msg">${esc(ns.ip)}</small></span><small class="msg">${ago(n.updated)}</small></h4>
         <span class="phase">${esc(phaseText(n.phase))}</span>
         <span class="msg">${esc(n.msg)}${stale ? " (no news for a while: check the machine's screen)" : ""}</span>
-        ${m ? `<div class="machine">${esc([m.vendor, m.product, m.serial].filter(Boolean).join(" ") || m.macs[0])}</div>` : ""}
+        ${m ? `<div class="machine">${esc([m.vendor, m.product, m.serial].filter(Boolean).join(" ") || m.macs[0])}</div>` : ns.boot_mac ? `<div class="machine">boots from the network as <span class="mono">${esc(ns.boot_mac)}</span></div>` : ""}
         <details><summary class="msg">log</summary><pre>${(n.log || []).slice(-40).map((l) => `${new Date(l[0] * 1000).toLocaleTimeString()} ${esc(l[1])} ${esc(l[2])}`).join("\n")}</pre></details>
         <div class="tools">
           ${n.installed && !n.allow_reinstall ? `<button data-act="allow_reinstall" data-node="${esc(ns.name)}">Allow reinstall</button>` : ""}
@@ -110,12 +132,21 @@
     const st = { ...s.settings, nodes_state: s.nodes, phases: s.phases, now: s.now };
     fill(s.settings);
     renderNodes(st);
+    const net = s.settings.install_method === "network";
+    $("#step3-net").hidden = !net;
+    $("#step3").hidden = net;
+    $("#net-howto").hidden = !net;
+    $("#stick-howto").hidden = net;
+    if (net) renderMachines(s);
+    $("#net-server").textContent = (s.settings.builder_url.match(/\/\/([^/:]+)/) || [])[1] || "<this Home Assistant's address>";
+    $("#tftp-error").hidden = !(net && s.tftp_error);
+    $("#tftp-error").textContent = s.tftp_error ? `The boot-loader port (UDP 69) could not be opened: ${s.tftp_error}. Network boot will not work until the add-on can use it; the stick still does.` : "";
     $("#free").textContent = `${(s.free_mb / 1024).toFixed(1)} GB`;
     $("#problems").innerHTML = s.problems.map((p) => `<li>${esc(p)}</li>`).join("");
     const b = s.build;
     $("#build").disabled = b.status === "running" || s.problems.length > 0;
     $("#build").textContent = s.iso_ready ? "Build again" : "Build";
-    $("#build-status").textContent = b.status === "running" ? b.step : b.status === "done" ? `Ready (built ${ago(b.built_at)})` : b.status === "error" ? "Failed" : "";
+    $("#build-status").textContent = b.status === "running" ? b.step : b.status === "done" ? `Ready (built ${ago(b.built_at)})${s.settings.install_method === "network" && !s.netboot_ready ? " for a stick only: Build again for network boot" : ""}` : b.status === "error" ? "Failed" : "";
     $("#build-bar").style.width = `${Math.round((b.status === "running" ? b.progress : b.status === "done" ? 1 : 0) * 100)}%`;
     if (b.status === "error") { $("#build-error").textContent = b.error; $("#build-error").hidden = false; }
     const dl = $("#dl");

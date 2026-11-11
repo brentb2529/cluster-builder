@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0
+
+- New: **install over the network**, no stick. The add-on serves the boot loader (iPXE) over TFTP and the Proxmox
+  auto-installer over HTTP; point the router's network-boot option at this Home Assistant, enable network boot on
+  each box once, and the boxes appear on the page as they ask. Say which node each one is and it installs and restarts
+  by itself. Any machine you do not assign is told to start from its own disk, and so is every node after its
+  install, so "network first" in the firmware is safe to leave on.
+- Step 1 chooses between the network and a USB stick; the stick path is unchanged.
+- The add-on needs UDP port 69 for the boot loader (shown on the page if it cannot open it).
+
 ## 0.1.2
 
 Verified on a real Home Assistant OS 18.4 VM in the lab: the backup was restored through the Welcome screen,

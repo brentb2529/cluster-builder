@@ -23,12 +23,16 @@ the one-minute copies. The page shows every node's progress.
    the new Home Assistant takes over your old one's address. Save.
 3. **Build.** Downloads the installer and the OS image and writes the stick image. A few minutes.
 4. **Write the stick** with Raspberry Pi Imager (Use custom) or Etcher. Everything on the stick is erased.
-5. **Boot each machine from the stick.** Cable it to the house network first. It installs itself and
-   **turns off**; remove the stick, turn it on again, and it finishes alone. The first machine you boot
-   becomes the first node and gets the Home Assistant VM. Boot the others any time.
+5. **Boot the machines.** Over the network (the default): set your router's network-boot option (DHCP options
+   66/67; in UniFi *Networks > your network > DHCP > Network Boot*) to this Home Assistant's address and the file
+   `ipxe.efi`, enable network boot in each box's firmware once and put it before the disk, then turn them on. Each
+   box appears under step 4 as it asks to boot; say which node it is and it installs itself, restarts and finishes
+   alone. With a stick instead: cable the box, boot it from the stick, it installs and **turns off**; remove the
+   stick, turn it on again. Either way the first machine to install becomes the first node and gets the Home
+   Assistant VM. A machine you never assign, and every node after its install, is told to start from its own disk.
 6. When all three say **Done**, open `https://<first node>:8006` (user `root`), see three nodes, then
    open `http://homeassistant.local:8123` (plain `http://homeassistant.local` on Home
-   Assistant OS 18) and restore your backup on the Welcome screen. Add the
+   Assistant OS 18) and restore your backup on the Welcome screen (or let the move-in do it, step 5). Add the
    Cluster Guard integration in the restored Home Assistant.
 
 The stick erases whatever machine boots from it. It only answers machines this page has not installed

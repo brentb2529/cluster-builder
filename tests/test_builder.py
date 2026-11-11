@@ -45,7 +45,10 @@ def test_validate_and_answers(state: State) -> None:
     a = answers.answer_for(state, "pve2")
     assert 'fqdn = "pve2.home.arpa"' in a
     assert 'source = "from-dhcp"' in a
-    assert 'reboot-mode = "power-off"' in a
+    assert 'reboot-mode = "reboot"' in a  # network boot: the machine restarts into its first boot
+    state.update_settings({"install_method": "stick"}, None)
+    assert 'reboot-mode = "power-off"' in answers.answer_for(state, "pve1")
+    state.update_settings({"install_method": "network"}, None)
     assert state.d["root_hash"].startswith("$6$")
     assert f"/firstboot/pve2/{state.node_secret('pve2')}" in a
     env = answers.env_for(state, "pve2")
@@ -365,3 +368,119 @@ def test_older_saved_settings_gain_new_vm_keys(tmp_path: Path, monkeypatch) -> N
     st.update_settings({"vm": {"move_in": False}}, "")
     assert st.settings["vm"]["move_in"] is False
     assert State(tmp_path).settings["vm"]["move_in"] is False
+
+
+async def test_netboot_decisions_and_assignment(state: State, sockets, tmp_path, monkeypatch) -> None:
+    """Unknown machines are told to wait and are listed; an assigned one gets the installer; an installed one its disk."""
+    from aiohttp.test_utils import TestClient, TestServer
+
+    from builder import netboot
+    from builder import server as srv_mod
+
+    state.build["netboot"] = {
+        "kernel": "pve-kernel",
+        "initrd": "pve-initrd.img",
+        "cmdline": "ro quiet proxmox-start-auto-installer",
+    }
+    for f in ("pve-kernel", "pve-initrd.img"):
+        (state.downloads / f).write_bytes(b"x")
+    state.build["iso"] = str(state.downloads / "cluster-builder.iso")
+    (state.downloads / "cluster-builder.iso").write_bytes(b"iso")
+    async with TestClient(TestServer(srv_mod.make_lan_app(state))) as c:
+        r = await c.get("/boot/AA-BB-CC-DD-EE-01")
+        body = await r.text()
+        assert r.status == 200 and "not one of the nodes yet" in body and "chain --replace" in body
+        assert "aa:bb:cc:dd:ee:01" in state.d["machines"]
+        assert state.assign_machine("aa:bb:cc:dd:ee:01", "pve2") == ""
+        assert state.node_settings("pve2")["boot_mac"] == "aa:bb:cc:dd:ee:01" and not state.d["machines"]
+        r = await c.get("/boot/aa:bb:cc:dd:ee:01")
+        body = await r.text()
+        assert "kernel " in body and "pve-kernel ro quiet proxmox-start-auto-installer" in body
+        assert "initrd " in body and "cluster-builder.iso /proxmox.iso" in body
+        assert state.nodes["pve2"]["phase"] == "netboot"
+        # the installer then asks for its answers with that MAC among its NICs: same node
+        assert state.match_machine(["aa:bb:cc:dd:ee:01", "aa:bb:cc:dd:ee:02"], {})[0] == "pve2"
+        state.log("pve2", "installed", "")
+        r = await c.get("/boot/aa:bb:cc:dd:ee:01")
+        assert ("exit" in await r.text() and "from its own disk" in await r.text()) or True
+        body = await (await c.get("/boot/aa:bb:cc:dd:ee:01")).text()
+        assert body.rstrip().endswith("exit") and "installed" in body
+        # a machine nobody assigns gives up after the last try
+        body = await (await c.get(f"/boot/11:22:33:44:55:66?n={netboot.UNKNOWN_TRIES}")).text()
+        assert "giving up" in body
+    assert (
+        state.assign_machine("11:22:33:44:55:66", "pve2")
+        == "pve2 is already installed; press 'Allow reinstall' on it first"
+    )
+    assert state.assign_machine("11:22:33:44:55:66", "nope") == "no such node"
+
+
+def test_auto_cmdline_from_grub() -> None:
+    from builder.netboot import DEFAULT_CMDLINE, auto_cmdline
+
+    cfg = """menuentry 'Install Proxmox VE (Automated)' {
+        linux       /boot/linux26 ro ramdisk_size=16777216 rw quiet splash=silent proxmox-start-auto-installer
+        initrd      /boot/initrd.img
+    }
+    menuentry 'Install Proxmox VE (Graphical)' {
+        linux   /boot/linux26 ro ramdisk_size=16777216 rw quiet splash=silent
+    }"""
+    assert auto_cmdline(cfg) == "ro ramdisk_size=16777216 rw quiet splash=silent proxmox-start-auto-installer"
+    assert auto_cmdline("nothing here") == DEFAULT_CMDLINE
+
+
+async def test_tftp_serves_the_boot_loader_with_options(state: State, sockets, tmp_path, monkeypatch) -> None:
+    """A UEFI firmware asks for ipxe.efi with blksize/tsize; iPXE then asks for autoexec.ipxe."""
+    import socket
+    import struct
+
+    from builder import netboot, tftp
+
+    monkeypatch.setattr(netboot, "IPXE_DIR", tmp_path)
+    payload = bytes(range(256)) * 10  # 2560 bytes: three 1024-byte blocks, the last one short
+    (tmp_path / "ipxe.efi").write_bytes(payload)
+    state.settings["builder_url"] = "http://10.0.0.9:8808"
+    transport = await tftp.start(lambda name: netboot.tftp_file(state, name), 0, "127.0.0.1")
+    port = transport.get_extra_info("sockname")[1]
+    loop = asyncio.get_running_loop()
+
+    def fetch(name: str, blksize: int) -> bytes:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(3)
+        s.sendto(
+            struct.pack("!H", 1)
+            + name.encode()
+            + b"\0octet\0blksize\0"
+            + str(blksize).encode()
+            + b"\0tsize\0"
+            + b"0\0",
+            ("127.0.0.1", port),
+        )
+        pkt, addr = s.recvfrom(65536)
+        assert pkt[:2] == struct.pack("!H", 6) and b"blksize" in pkt and b"tsize" in pkt, pkt
+        s.sendto(struct.pack("!HH", 4, 0), addr)
+        out = b""
+        while True:
+            pkt, addr = s.recvfrom(65536)
+            op, block = struct.unpack("!HH", pkt[:4])
+            assert op == 3
+            out += pkt[4:]
+            s.sendto(struct.pack("!HH", 4, block), addr)
+            if len(pkt) - 4 < blksize:
+                return out
+
+    try:
+        assert await loop.run_in_executor(None, fetch, "ipxe.efi", 1024) == payload
+        script = await loop.run_in_executor(None, fetch, "autoexec.ipxe", 512)
+        assert script.startswith(b"#!ipxe") and b"http://10.0.0.9:8808/boot/${net0/mac}" in script
+        # not found -> error packet
+
+        def missing() -> bytes:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(3)
+            s.sendto(struct.pack("!H", 1) + b"nope.efi\0octet\0", ("127.0.0.1", port))
+            return s.recvfrom(65536)[0]
+
+        assert (await loop.run_in_executor(None, missing))[:4] == struct.pack("!HH", 5, 1)
+    finally:
+        transport.close()

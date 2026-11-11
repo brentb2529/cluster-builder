@@ -54,3 +54,6 @@ button:disabled, .button.disabled { opacity: .5; cursor: default; pointer-events
 ol li { margin: 4px 0; }
 
 .done-box { border: 1px solid var(--good); border-radius: 8px; padding: 10px 12px; }
+
+.machines .machine-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; padding: .5rem .75rem; margin: .4rem 0; border: 1px solid var(--line, #ddd); border-radius: 8px; }
+.machines button { margin: .1rem .2rem; }

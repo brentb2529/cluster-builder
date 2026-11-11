@@ -10,7 +10,7 @@
 <main>
   <header>
     <h1>Cluster Builder</h1>
-    <p class="lede">Three empty mini PCs, one USB stick, and this page. When it says <b>Done</b> three times, you have a
+    <p class="lede">Three empty mini PCs, a network cable each, and this page. When it says <b>Done</b> three times, you have a
       Proxmox cluster with a Home Assistant VM that restarts on another machine if one dies.</p>
   </header>
 
@@ -29,6 +29,12 @@
       </div>
       <p class="hint">The root password is what you will type once into Cluster Guard later, and into any node's web page
         (https://&lt;node address&gt;:8006). It is stored here only as a hash.</p>
+
+      <h3>How the machines get the installer</h3>
+      <div class="grid">
+        <label class="check"><input type="radio" name="install_method" value="network"> Over the network (no stick: the boxes boot from this add-on)</label>
+        <label class="check"><input type="radio" name="install_method" value="stick"> From a USB stick you write</label>
+      </div>
 
       <h3>The three nodes</h3>
       <table class="nodes">
@@ -82,7 +88,7 @@
   </section>
 
   <section id="step2" class="card">
-    <h2><span class="num">2</span> Build the stick image</h2>
+    <h2><span class="num">2</span> Build the installer</h2>
     <p>Downloads the Proxmox installer and the Home Assistant OS image (about 2 GB) and makes one installer image
       that works for all three machines. Needs internet and <span id="free"></span> free.</p>
     <ul id="problems" class="problems"></ul>
@@ -92,6 +98,22 @@
     </div>
     <div class="bar"><div id="build-bar"></div></div>
     <pre id="build-error" class="error" hidden></pre>
+  </section>
+
+  <section id="step3-net" class="card">
+    <h2><span class="num">3</span> Point the machines at this add-on</h2>
+    <p id="tftp-error" class="error" hidden></p>
+    <ol>
+      <li><b>Router, once.</b> Tell its DHCP server where network-booting machines get their boot loader: server
+        <code id="net-server"></code>, boot file <code>ipxe.efi</code>. In UniFi: Settings &rarr; Networks &rarr; your network
+        &rarr; DHCP &rarr; <i>Network Boot</i>. Other routers call these DHCP options 66 and 67. Legacy (non-UEFI) boxes
+        want <code>undionly.kpxe</code> instead.</li>
+      <li><b>Each box, once.</b> Start it with a keyboard and screen, enter the firmware setup (Del or F2 on most mini
+        PCs), enable network boot (PXE, IPv4) and put it <b>before</b> the disk. From then on it never needs a stick.</li>
+      <li><b>Turn the boxes on.</b> Each one appears under step 4 as it asks to boot; say which node it is. It installs
+        itself, restarts, and finishes alone. Any machine you do not assign is told to start from its own disk, so
+        nothing else on your network can be wiped.</li>
+    </ol>
   </section>
 
   <section id="step3" class="card">
@@ -106,13 +128,20 @@
   </section>
 
   <section id="step4" class="card">
-    <h2><span class="num">4</span> Boot each machine from the stick</h2>
-    <p>Cable each box to your house network, plug in the stick, power it on. If it does not boot from the stick, press the
-      boot-menu key as it starts (F7 on MeLE, F11 or F12 on most others) and pick the stick. <b>The stick erases the
-      machine it boots on</b>, so only plug it into the new machines.</p>
-    <p>Each machine installs itself, <b>turns itself off</b>, and waits for you to remove the stick and turn it back on.
-      Then it finishes on its own. The first box you boot becomes the first node; do the others whenever you like, together
-      or one at a time.</p>
+    <h2><span class="num">4</span> Watch the machines install</h2>
+    <div id="stick-howto">
+      <p>Cable each box to your house network, plug in the stick, power it on. If it does not boot from the stick, press the
+        boot-menu key as it starts (F7 on MeLE, F11 or F12 on most others) and pick the stick. <b>The stick erases the
+        machine it boots on</b>, so only plug it into the new machines.</p>
+      <p>Each machine installs itself, <b>turns itself off</b>, and waits for you to remove the stick and turn it back on.
+        Then it finishes on its own. The first box you boot becomes the first node; do the others whenever you like, together
+        or one at a time.</p>
+    </div>
+    <div id="net-howto">
+      <p>Machines that ask to boot from the network show up here. Say which node each one is and it gets the installer at
+        its next try (within 15 seconds). The first one to install becomes the first node and gets the Home Assistant VM.</p>
+      <div id="machines" class="machines"></div>
+    </div>
     <div id="node-cards" class="cards"></div>
     <div class="actions">
       <button id="reset-all" class="danger">Start over (forget all machines)</button>

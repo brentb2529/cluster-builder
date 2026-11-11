@@ -14,7 +14,7 @@ from typing import Any
 import aiohttp
 from aiohttp import web
 
-from . import answers, build, move_in
+from . import answers, build, move_in, netboot, tftp
 from .state import State
 
 _LOGGER = logging.getLogger(__name__)
@@ -118,6 +118,8 @@ async def ui_state(request: web.Request) -> web.Response:
     state = _state(request)
     pub = state.public()
     pub["iso_ready"] = build.iso_ready(state)
+    pub["netboot_ready"] = netboot.ready(state)
+    pub["tftp_error"] = getattr(state, "tftp_error", "")
     pub["free_mb"] = build.disk_free(state.downloads) >> 20
     pub["problems"] = state.validate()
     pub["now"] = time.time()
@@ -156,6 +158,23 @@ async def ui_node_action(request: web.Request) -> web.Response:
         state.save()
     else:
         raise web.HTTPNotFound()
+    return web.json_response({"ok": True})
+
+
+async def ui_assign(request: web.Request) -> web.Response:
+    """A machine that asked to network-boot becomes one of the nodes."""
+    state = _state(request)
+    body = await request.json()
+    why = state.assign_machine(request.match_info["mac"], str(body.get("node", "")))
+    if why:
+        return web.json_response({"ok": False, "error": why}, status=400)
+    return web.json_response({"ok": True})
+
+
+async def ui_forget_machine(request: web.Request) -> web.Response:
+    state = _state(request)
+    state.d["machines"].pop(netboot.norm_mac(request.match_info["mac"]), None)
+    state.save()
     return web.json_response({"ok": True})
 
 
@@ -224,6 +243,8 @@ def make_ui_app(state: State, dev: bool = False) -> web.Application:
     app.router.add_post("/api/build", ui_build)
     app.router.add_post("/api/node/{node}/{action}", ui_node_action)
     app.router.add_post("/api/reset", ui_reset_all)
+    app.router.add_post("/api/machine/{mac}/assign", ui_assign)
+    app.router.add_post("/api/machine/{mac}/forget", ui_forget_machine)
     app.router.add_post("/api/move_in", ui_move_in)
     app.router.add_get("/api/preview/{node}", ui_preview)
     app.router.add_get("/download/" + build.ISO_NAME, ui_download)
@@ -274,6 +295,17 @@ async def lan_answer(request: web.Request) -> web.Response:
     )
     _LOGGER.info("installer at %s is %s", request.remote, name)
     return web.Response(text=answers.answer_for(state, name), content_type="application/toml")
+
+
+async def lan_boot(request: web.Request) -> web.Response:
+    """iPXE on a machine asks what to do (no secret: the answer is either the public installer or 'use your disk')."""
+    state = _state(request)
+    try:
+        tries = int(request.query.get("n", "0"))
+    except ValueError:
+        tries = 0
+    script = netboot.boot_script(state, request.match_info["mac"], tries, request.remote or "")
+    return web.Response(text=script, content_type="text/plain")
 
 
 async def lan_firstboot(request: web.Request) -> web.Response:
@@ -384,6 +416,7 @@ def make_lan_app(state: State) -> web.Application:
     app.router.add_post("/installed/{node}/{secret}", lan_installed)
     app.router.add_post("/status/{node}/{secret}", lan_status)
     app.router.add_get("/join/{node}/{secret}", lan_join)
+    app.router.add_get("/boot/{mac}", lan_boot)
     app.router.add_get("/files/{token}/{name}", lan_file)
     app.router.add_get("/cleanup/{node}/{secret}", lan_cleanup)
     app.router.add_get("/iso/{token}/" + build.ISO_NAME, lan_iso)
@@ -399,6 +432,17 @@ async def serve(state: State, ui_port: int = 8099, lan_port: int = 8808, dev: bo
         await web.TCPSite(runner, "0.0.0.0", port).start()
         runners.append(runner)
     _LOGGER.info("UI on :%s (ingress), machines on :%s", ui_port, lan_port)
+    tftp_port = int(os.environ.get("CB_TFTP_PORT", "69"))
+    try:
+        await tftp.start(lambda name: netboot.tftp_file(state, name), tftp_port)
+        state.tftp_error = ""  # type: ignore[attr-defined]
+        have = [n for n in netboot.LOADERS if (netboot.IPXE_DIR / netboot.LOADERS[n]).is_file()]
+        _LOGGER.info("TFTP (network boot loader) on :%s, serving %s", tftp_port, ", ".join(have) or "no loaders!")
+    except OSError as err:
+        state.tftp_error = str(err)  # type: ignore[attr-defined]
+        _LOGGER.warning(
+            "TFTP port %s not available (%s): network boot will not work, the stick still does", tftp_port, err
+        )
     resume_move_in(state)  # an add-on restart (update, rebuild) must not strand a move-in half way
     try:
         while True:

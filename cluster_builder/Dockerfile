@@ -3,7 +3,7 @@ FROM $BUILD_FROM
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl gnupg xorriso xz-utils openssl openssh-client \
+    && apt-get install -y --no-install-recommends ca-certificates curl gnupg xorriso xz-utils ipxe openssl openssh-client \
          python3 python3-aiohttp \
     && curl -fsSL https://enterprise.proxmox.com/debian/proxmox-release-trixie.gpg \
          -o /usr/share/keyrings/proxmox-release-trixie.gpg \

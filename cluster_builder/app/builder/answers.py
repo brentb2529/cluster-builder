@@ -37,7 +37,8 @@ def answer_for(state: State, name: str) -> str:
         f"root-password-hashed = {toml_str(state.d['root_hash'])}",
         f"root-ssh-keys = [{toml_str(pub)}]",
         "reboot-on-error = false",
-        'reboot-mode = "power-off"',
+        # a network-booted machine just restarts into its first boot; a stick must be pulled first
+        f"reboot-mode = {toml_str('reboot' if s.get('install_method') == 'network' else 'power-off')}",
         "",
         "[network]",
         'source = "from-dhcp"',
