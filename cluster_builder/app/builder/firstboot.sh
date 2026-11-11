@@ -179,7 +179,8 @@ if [ "$VM_ENABLED" = 1 ]; then
       [ "$POOL_GB" -gt 0 ] && [ "$VM_DISK_GB" -gt $((POOL_GB / 2)) ] && VM_DISK_GB=$((POOL_GB / 2))
       # the disk can only grow from the image's own size (Home Assistant OS ships a 32 GB image); it is thin, so
       # only what Home Assistant writes takes space on the pool
-      IMG_BYTES=$(qemu-img info --output=json "$IMG" 2>/dev/null | sed -n 's/.*"virtual-size": *\([0-9]*\).*/\1/p' | head -1)
+      # the top-level size: qemu-img also lists its child nodes (the file itself) with their own, smaller sizes
+      IMG_BYTES=$(qemu-img info --output=json "$IMG" 2>/dev/null | python3 -c 'import json, sys; print(json.load(sys.stdin)["virtual-size"])' 2>/dev/null)
       IMG_GB=$(( (${IMG_BYTES:-0} + 1073741823) / 1073741824 ))
       [ "$VM_DISK_GB" -lt "$IMG_GB" ] && VM_DISK_GB=$IMG_GB
       VM_SIZE="${VM_MEMORY} MB memory, ${VM_CORES} cores, ${VM_DISK_GB} GB disk (this node: ${NODE_MB} MB, ${NODE_CORES} cores, ${POOL_GB} GB free)"
