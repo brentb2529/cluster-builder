@@ -122,8 +122,9 @@ async def run(state: State, ip: str, resumed: bool = False) -> None:
 
             size_mb = backup.stat().st_size / 1e6
             log("uploading", f"sending your backup ({size_mb:.0f} MB) to {base}")
-            # right after its first start Home Assistant's backup manager is still "blocked" for a while and
-            # answers 500 "Backup manager busy": keep trying, it clears within minutes
+            # right after its first start Home Assistant is not ready for this for a while: the landing page still
+            # answers 401, Core answers 404 until its onboarding API is registered, then 500 "Backup manager busy"
+            # for some minutes. Keep trying; a 4xx other than those is a real refusal.
             deadline = time.time() + WAIT_UPLOAD
             while True:
                 with backup.open("rb") as f:
@@ -136,7 +137,7 @@ async def run(state: State, ip: str, resumed: bool = False) -> None:
                             backup_id = (await r.json(content_type=None))["backup_id"]
                             break
                         text = (await r.text())[:200]
-                if not (r.status >= 500 and "busy" in text.lower()) or time.time() > deadline:
+                if (r.status not in (401, 404) and r.status < 500) or time.time() > deadline:
                     log("failed", f"the new Home Assistant refused the backup: {r.status} {text}")
                     return
                 log("uploading", f"the new Home Assistant is still getting ready ({text.strip()}); trying again")
