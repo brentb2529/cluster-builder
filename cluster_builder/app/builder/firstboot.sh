@@ -268,9 +268,18 @@ for i in json.load(sys.stdin):
   else
     for i in $(seq 1 240); do pvesh get /cluster/resources --type vm --output-format json 2>/dev/null | grep -q "\"vmid\":$VMID" && break; sleep 15; done
     JOB="$VMID-$NODE_INDEX"
-    pvesh get /cluster/replication --output-format json 2>/dev/null | grep -q "\"id\":\"$JOB\"" \
-      || pvesh create /cluster/replication --id "$JOB" --target "$N" --type local --schedule '*/1' --comment "Cluster Builder"
-    say replicating "job $JOB every minute"
+    # skip-freeze-fs: without it every replication snapshot freezes the guest's filesystems through the QEMU guest
+    # agent, and Home Assistant OS's agent hook then freezes the Supervisor's backup manager for seconds, every
+    # minute: its first-boot download of Home Assistant stalls and backups asked in that window are refused.
+    # Backups made by Proxmox still freeze (that is a different switch), so they stay consistent.
+    if pvesh get /cluster/replication --output-format json 2>/dev/null | grep -q "\"id\":\"$JOB\""; then
+      pvesh set "/cluster/replication/$JOB" --skip-freeze-fs 1 >/dev/null 2>&1 || true
+    else
+      pvesh create /cluster/replication --id "$JOB" --target "$N" --type local --schedule '*/1' --skip-freeze-fs 1 \
+        --comment "Cluster Builder" 2>/dev/null \
+        || pvesh create /cluster/replication --id "$JOB" --target "$N" --type local --schedule '*/1' --comment "Cluster Builder"
+    fi
+    say replicating "job $JOB every minute (no filesystem freeze for it)"
   fi
 fi
 

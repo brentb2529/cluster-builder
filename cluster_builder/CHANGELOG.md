@@ -2,6 +2,10 @@
 
 ## 0.2.1
 
+- The replication jobs are made with `skip-freeze-fs`: every minute's snapshot no longer freezes the Home Assistant
+  VM's filesystems through the guest agent. Home Assistant OS's agent hook turned each of those into a freeze of the
+  Supervisor's backup manager, which stalled its first-boot download of Home Assistant and refused backups asked
+  in that window. Proxmox's own backups of the VM still freeze it.
 - Move-in: the restore is asked again when the new Home Assistant refuses it because it is frozen for a disk
   snapshot (the cluster replicates the VM every minute, and Home Assistant OS's guest agent freezes the Supervisor's
   backup manager for those seconds). It used to fail the move on that.
