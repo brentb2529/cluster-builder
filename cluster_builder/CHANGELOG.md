@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Docs: the network boot loader is unsigned, so Secure Boot must be off on each box (page and DOCS say so now).
+
 ## 0.2.0
 
 - New: **install over the network**, no stick. The add-on serves the boot loader (iPXE) over TFTP and the Proxmox
