@@ -23,6 +23,7 @@
     <td><input name="n${i}_link_mac" value="${n.link_mac}" class="mono"></td></tr>`;
 
   const fill = (s) => {
+    if (dirty) return; // the user is editing: no field is touched until Save (or the page is reloaded)
     const set = (name, v) => { const el = form.elements[name]; if (el && el !== document.activeElement) el.value = v ?? ""; };
     for (const k of ["cluster_name", "domain", "gateway", "dns", "prefix", "timezone", "builder_url", "iso_url", "image_url", "disk_filter", "country", "keyboard", "extra_firstboot"]) set(k, s[k]);
     for (const k of ["memory", "cores", "disk_gb", "mac", "qm_args"]) set("vm_" + k, s.vm[k]);

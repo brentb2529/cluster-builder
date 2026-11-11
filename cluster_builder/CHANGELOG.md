@@ -2,6 +2,9 @@
 
 ## 0.2.1
 
+- Fixed: the page refreshed every field from the server every 3 s while you were still editing, so a changed
+  checkbox (or a field you had moved on from) was quietly reverted before Save. Nothing is refilled while the form
+  has unsaved edits.
 - Network install needs **no router change**: the add-on answers the machines' network-boot requests itself
   (ProxyDHCP on UDP 67 and 4011, next to the router's own DHCP), so the router's network-boot option is only a
   fallback. The add-on now uses the host's network for that (the port list is gone). A machine is listed under
