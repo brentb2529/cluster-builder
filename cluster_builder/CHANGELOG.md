@@ -2,6 +2,9 @@
 
 ## 0.2.1
 
+- Fixed: the machine list and node cards were rebuilt on every 3 s poll, so a click during a rebuild went nowhere
+  and rows could move under the mouse (seen by hand: "This is pve3" needed three tries). They now update in
+  place, rows keep their order, only the times tick.
 - The Home Assistant VM is sized by the add-on: memory half of the first node's (2 to 8 GB) and cores half of its,
   decided on the node itself; disk twice what this Home Assistant uses today, at least 32 GB, never more than half
   the node's pool. Fixed sizes moved under Advanced (0 = automatic).

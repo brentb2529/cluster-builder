@@ -81,40 +81,55 @@
     return (state.phases.find((x) => x[0] === p) || [p, p])[1];
   };
 
+  // The lists are rebuilt only when their content changes, not on every 3 s poll: a rebuild destroys the buttons,
+  // and a click that lands during one goes nowhere. Times ("asked 14 s ago") are refreshed in place.
+  const sigs = {};
+  const changed = (key, sig) => { if (sigs[key] === sig) return false; sigs[key] = sig; return true; };
+  const tickAgo = () => document.querySelectorAll("[data-ago]").forEach((el) => { el.textContent = ago(+el.dataset.ago); });
   const renderMachines = (s) => {
-    const macs = Object.keys(s.machines || {}).sort((a, b) => (s.machines[b].last || 0) - (s.machines[a].last || 0));
+    const macs = Object.keys(s.machines || {}).sort((a, b) => (s.machines[a].first || 0) - (s.machines[b].first || 0));
+    const sig = JSON.stringify([macs, macs.map((m) => [s.machines[m].count, s.machines[m].from]), s.settings.nodes.map((n) => n.name), s.settings.install_method]);
+    if (!changed("machines", sig)) return;
     $("#machines").innerHTML = macs.map((mac) => {
       const m = s.machines[mac];
-      return `<div class="machine-row"><span><b class="mono">${esc(mac)}</b> <span class="msg">asked ${esc(ago(m.last))}${m.from ? ` from ${esc(m.from)}` : ""}, ${m.count} time${m.count === 1 ? "" : "s"}</span></span>
+      return `<div class="machine-row"><span><b class="mono">${esc(mac)}</b> <span class="msg">asked <span data-ago="${m.last || 0}">${esc(ago(m.last))}</span>${m.from ? ` from ${esc(m.from)}` : ""}, ${m.count} time${m.count === 1 ? "" : "s"}</span></span>
         <span>${s.settings.nodes.map((n) => `<button data-mac="${esc(mac)}" data-node="${esc(n.name)}">This is ${esc(n.name)}</button>`).join(" ")}
         <button data-mac="${esc(mac)}" data-forget="1">Not one of mine</button></span></div>`;
     }).join("") || `<p class="msg">${s.settings.install_method === "network" ? "No machine has asked to boot yet." : ""}</p>`;
-    document.querySelectorAll("#machines button").forEach((b) => b.addEventListener("click", async () => {
-      try {
-        if (b.dataset.forget) await api(`api/machine/${encodeURIComponent(b.dataset.mac)}/forget`, {});
-        else await api(`api/machine/${encodeURIComponent(b.dataset.mac)}/assign`, { node: b.dataset.node });
-        refresh();
-      } catch (err) { $("#build-error").textContent = err.message; $("#build-error").hidden = false; }
-    }));
   };
+  $("#machines").addEventListener("click", async (ev) => {
+    const b = ev.target.closest("button"); if (!b || !b.dataset.mac) return;
+    try {
+      if (b.dataset.forget) await api(`api/machine/${encodeURIComponent(b.dataset.mac)}/forget`, {});
+      else await api(`api/machine/${encodeURIComponent(b.dataset.mac)}/assign`, { node: b.dataset.node });
+      refresh();
+    } catch (err) { $("#build-error").textContent = err.message; $("#build-error").hidden = false; }
+  });
 
   const renderNodes = (s) => {
     const active = new Set(["netboot", "installing", "hello", "network", "packages", "cluster_created", "waiting_cluster", "joining", "joined", "image", "vm_created", "replicating"]);
+    const stuckKind = (n) => {
+      const quiet = s.now - (n.updated || 0);
+      if (!active.has(n.phase) || n.phase === "installed") return "";
+      return n.phase === "netboot" && quiet > 300 ? "netboot" : n.phase === "installing" && quiet > 600 ? "installing" : quiet > 1800 ? "quiet" : "";
+    };
+    const sig = JSON.stringify([confirmNode, s.nodes.map((ns) => { const n = s.nodes_state[ns.name] || {}; return [ns.name, ns.ip, ns.boot_mac, n.phase, n.msg, n.machine, n.installed, n.allow_reinstall, (n.log || []).length, stuckKind(n)]; })]);
+    if (!changed("nodes", sig)) { tickAgo(); return; }
     $("#node-cards").innerHTML = s.nodes.map((ns) => {
       const n = s.nodes_state[ns.name] || {};
       const cls = n.phase === "done" ? "done" : n.phase === "failed" ? "failed" : active.has(n.phase) ? "active" : "";
       const m = n.machine;
       // a machine that fails stays silent (the installer only reports success, a crashed box reports nothing):
       // say what probably happened, by phase, once it has been quiet too long
-      const quiet = s.now - (n.updated || 0);
-      const stuck = !active.has(n.phase) || n.phase === "installed" ? "" :
-        n.phase === "netboot" && quiet > 300 ? `It took the installer ${ago(n.updated)} and never asked for its answers. Look at its screen: a kernel panic or a restart loop means the box has too little memory for the network install (8 GB needed); a normal Proxmox login means it started from its disk instead (put network boot first in its firmware). Fix that and turn it on again: it gets the installer again by itself.` :
-        n.phase === "installing" && quiet > 600 ? `The installer stopped reporting ${ago(n.updated)}. Look at the machine's screen for the error; after fixing it, turn the box on again and it installs again.` :
-        quiet > 1800 ? `No news ${ago(n.updated)}: check the machine's screen.` : "";
+      const when = `<span data-ago="${n.updated || 0}">${esc(ago(n.updated))}</span>`;
+      const kind = stuckKind(n);
+      const stuck = kind === "netboot" ? `It took the installer ${when} and never asked for its answers. Look at its screen: a kernel panic or a restart loop means the box has too little memory for the network install (8 GB needed); a normal Proxmox login means it started from its disk instead (put network boot first in its firmware). Fix that and turn it on again: it gets the installer again by itself.` :
+        kind === "installing" ? `The installer stopped reporting ${when}. Look at the machine's screen for the error; after fixing it, turn the box on again and it installs again.` :
+        kind === "quiet" ? `No news ${when}: check the machine's screen.` : "";
       return `<div class="node ${cls} ${stuck ? "stuck" : ""}">
-        <h4><span>${esc(ns.name)} <small class="msg">${esc(ns.ip)}</small></span><small class="msg">${ago(n.updated)}</small></h4>
+        <h4><span>${esc(ns.name)} <small class="msg">${esc(ns.ip)}</small></span><small class="msg" data-ago="${n.updated || 0}">${esc(ago(n.updated))}</small></h4>
         <span class="phase">${esc(phaseText(n.phase))}</span>
-        <span class="msg">${esc(n.msg)}</span>${stuck ? `<p class="error">${esc(stuck)}</p>` : ""}
+        <span class="msg">${esc(n.msg)}</span>${stuck ? `<p class="error">${stuck}</p>` : ""}
         ${m ? `<div class="machine">${esc([m.vendor, m.product, m.serial].filter(Boolean).join(" ") || m.macs[0])}</div>` : ns.boot_mac ? `<div class="machine">boots from the network as <span class="mono">${esc(ns.boot_mac)}</span></div>` : ""}
         <details><summary class="msg">log</summary><pre>${(n.log || []).slice(-40).map((l) => `${new Date(l[0] * 1000).toLocaleTimeString()} ${esc(l[1])} ${esc(l[2])}`).join("\n")}</pre></details>
         <div class="tools">
@@ -125,14 +140,15 @@
           <a class="msg" href="api/preview/${esc(ns.name)}" target="_blank" rel="noopener">what it gets</a>
         </div></div>`;
     }).join("");
-    document.querySelectorAll("#node-cards button").forEach((b) => b.addEventListener("click", async () => {
-      const act = b.dataset.act;
-      if (act === "reset") { confirmNode = b.dataset.node; render(state); return; }
-      if (act === "reset-no") { confirmNode = null; render(state); return; }
-      confirmNode = null;
-      await api(`api/node/${b.dataset.node}/${act === "reset-yes" ? "reset" : act}`, {}); refresh();
-    }));
   };
+  $("#node-cards").addEventListener("click", async (ev) => {
+    const b = ev.target.closest("button"); if (!b || !b.dataset.act) return;
+    const act = b.dataset.act;
+    if (act === "reset") { confirmNode = b.dataset.node; render(state); return; }
+    if (act === "reset-no") { confirmNode = null; render(state); return; }
+    confirmNode = null;
+    await api(`api/node/${b.dataset.node}/${act === "reset-yes" ? "reset" : act}`, {}); refresh();
+  });
 
   const render = (s) => {
     state = s;
