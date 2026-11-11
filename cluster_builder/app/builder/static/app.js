@@ -103,7 +103,8 @@
       const n = s.nodes_state[ns.name] || {};
       const cls = n.phase === "done" ? "done" : n.phase === "failed" ? "failed" : active.has(n.phase) ? "active" : "";
       const m = n.machine;
-      const stale = active.has(n.phase) && n.phase !== "installed" && s.now - (n.updated || 0) > 1800;
+      // an installer that fails stays silent (the webhook only fires on success): say so after ten minutes
+      const stale = active.has(n.phase) && n.phase !== "installed" && s.now - (n.updated || 0) > (n.phase === "installing" ? 600 : 1800);
       return `<div class="node ${cls}">
         <h4><span>${esc(ns.name)} <small class="msg">${esc(ns.ip)}</small></span><small class="msg">${ago(n.updated)}</small></h4>
         <span class="phase">${esc(phaseText(n.phase))}</span>

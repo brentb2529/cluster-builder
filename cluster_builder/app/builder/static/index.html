@@ -109,7 +109,8 @@
         &rarr; DHCP &rarr; <i>Network Boot</i>. Other routers call these DHCP options 66 and 67. Legacy (non-UEFI) boxes
         want <code>undionly.kpxe</code> instead.</li>
       <li><b>Each box, once.</b> Start it with a keyboard and screen, enter the firmware setup (Del or F2 on most mini
-        PCs), enable network boot (PXE, IPv4) and put it <b>before</b> the disk. From then on it never needs a stick.</li>
+        PCs), enable network boot (PXE, IPv4) and put it <b>before</b> the disk. From then on it never needs a stick. The box
+        needs <b>4 GB of memory or more</b>: the installer runs from memory.</li>
       <li><b>Turn the boxes on.</b> Each one appears under step 4 as it asks to boot; say which node it is. It installs
         itself, restarts, and finishes alone. Any machine you do not assign is told to start from its own disk, so
         nothing else on your network can be wiped.</li>

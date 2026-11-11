@@ -25,7 +25,8 @@ the one-minute copies. The page shows every node's progress.
 4. **Write the stick** with Raspberry Pi Imager (Use custom) or Etcher. Everything on the stick is erased.
 5. **Boot the machines.** Over the network (the default): set your router's network-boot option (DHCP options
    66/67; in UniFi *Networks > your network > DHCP > Network Boot*) to this Home Assistant's address and the file
-   `ipxe.efi`, enable network boot in each box's firmware once and put it before the disk, then turn them on. Each
+   `ipxe.efi`, enable network boot in each box's firmware once and put it before the disk (the box needs 4 GB of memory
+   or more, the installer runs from memory), then turn them on. Each
    box appears under step 4 as it asks to boot; say which node it is and it installs itself, restarts and finishes
    alone. With a stick instead: cable the box, boot it from the stick, it installs and **turns off**; remove the
    stick, turn it on again. Either way the first machine to install becomes the first node and gets the Home
