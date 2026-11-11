@@ -2,6 +2,8 @@
 
 ## 0.2.1
 
+- Node cards show progress while a box loads and starts the network installer (kernel, files, image handed over,
+  "starting the installer, 2 to 5 minutes"), a step-of-N bar, and green instead of orange while busy.
 - Fixed: the machine list and node cards were rebuilt on every 3 s poll, so a click during a rebuild went nowhere
   and rows could move under the mouse (seen by hand: "This is pve3" needed three tries). They now update in
   place, rows keep their order, only the times tick.

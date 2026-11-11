@@ -204,9 +204,28 @@ async def ui_download(request: web.Request) -> web.StreamResponse:
     state = _state(request)
     if not build.iso_ready(state):
         raise web.HTTPNotFound(text="no stick image yet")
-    return web.FileResponse(
-        state.build["iso"], headers={"Content-Disposition": f'attachment; filename="{build.ISO_NAME}"'}
-    )
+    headers = {"Content-Disposition": f'attachment; filename="{build.ISO_NAME}"'}
+    node = state.node_loading_from(request.remote or "")
+    if node:
+        said = (
+            "installer image loaded: the machine is starting the Proxmox installer, which takes 2 to 5 minutes "
+            "before it reports back here"
+        )
+        return _FileThenLog(state.build["iso"], lambda: state.log(node, "netboot", said), headers=headers)
+    return web.FileResponse(state.build["iso"], headers=headers)
+
+
+class _FileThenLog(web.FileResponse):
+    """A file response that records something once the whole file has been sent (progress for the node card)."""
+
+    def __init__(self, path, after, **kw):
+        super().__init__(path, **kw)
+        self._after = after
+
+    async def prepare(self, request):  # type: ignore[override]
+        writer = await super().prepare(request)
+        self._after()
+        return writer
 
 
 async def ui_move_in(request: web.Request) -> web.Response:
@@ -412,6 +431,13 @@ async def lan_file(request: web.Request) -> web.StreamResponse:
     p = build.provided(name) or state.downloads / name
     if not p.is_file():
         raise web.HTTPNotFound()
+    node = state.node_loading_from(request.remote or "")
+    said = {
+        netboot.KERNEL_FILE: "installer kernel loaded; now the installer files",
+        netboot.INITRD_FILE: "installer files loaded; now the 1.7 GB installer image",
+    }.get(name)
+    if node and said:
+        return _FileThenLog(p, lambda: state.log(node, "netboot", said))
     return web.FileResponse(p)
 
 

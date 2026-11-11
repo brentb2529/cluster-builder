@@ -77,7 +77,12 @@ def boot_script(state: State, mac: str, tries: int, remote: str) -> str:
                 base, mac, tries, f"{name} is assigned to this machine but there is no build yet: press Build"
             )
         nb = state.build["netboot"]
-        state.log(name, "netboot", f"sending the installer to {mac}")
+        state.nodes[name]["netboot_ip"] = remote
+        state.log(
+            name,
+            "netboot",
+            f"{mac} is loading the installer over the network (1.7 GB, usually a minute), then starts it",
+        )
         from . import build  # local import: build imports state
 
         return (

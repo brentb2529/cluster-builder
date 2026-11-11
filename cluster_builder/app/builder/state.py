@@ -431,6 +431,13 @@ class State:
                 return name
         return None
 
+    def node_loading_from(self, ip: str) -> str | None:
+        """The node whose machine (at *ip*) is fetching the network installer right now."""
+        for name, node in self.nodes.items():
+            if node.get("netboot_ip") == ip and node.get("phase") == "netboot":
+                return name
+        return None
+
     def machine_asking(self, mac: str, loader: str) -> None:
         """A machine's firmware asked where to boot from (ProxyDHCP): list it right away, before iPXE has loaded,
         so the page shows something is happening. The count stays for /boot/<mac> calls."""
