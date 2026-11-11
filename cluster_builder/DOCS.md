@@ -19,8 +19,10 @@ the one-minute copies. The page shows every node's progress.
 1. **Install this add-on** on the Home Assistant you have today and open it from the sidebar.
 2. **Fill in the page.** Most fields are pre-filled from your Home Assistant: time zone, router, DNS,
    suggested node addresses. Choose a root password for the nodes (you will type it once into Cluster
-   Guard later). The Home Assistant VM gets a MAC address: give it a DHCP reservation in your router so
-   the new Home Assistant takes over your old one's address. Save.
+   Guard later). The page makes up a MAC address for the new Home Assistant VM (it is not one of the new
+   machines' and not this Home Assistant's; nothing to look up): give it a DHCP reservation in your router so
+   the new Home Assistant comes up at an address you know. It cannot have this machine's address while both
+   run; after the move, when the old machine is off, you can hand the old address to the VM's MAC. Save.
 3. **Build.** Downloads the installer and the OS image and writes the stick image. A few minutes.
 4. **Write the stick** with Raspberry Pi Imager (Use custom) or Etcher. Everything on the stick is erased.
 5. **Boot the machines.** Over the network (the default): nothing to set on the router, the add-on answers the
