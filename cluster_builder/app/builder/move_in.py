@@ -76,6 +76,26 @@ async def _set_up(session: aiohttp.ClientSession, base: str, status: int, steps:
     return status == 404 and await _core_up(session, base)
 
 
+async def _wait_restored(session: aiohttp.ClientSession, bases: list[str], deadline: float) -> str:
+    """After a restore was sent: "done" once a set-up Home Assistant answers, "welcome" if the onboarding screen
+    is back instead (the restore did not take), "timeout" otherwise."""
+    quiet = 0
+    while time.time() < deadline:
+        for b in bases:  # the restored Home Assistant may listen on this one's port
+            status, steps = await _onboarding(session, b)
+            if await _set_up(session, b, status, steps):
+                return "done"
+            if status == 200 and isinstance(steps, list):
+                quiet += 1
+                if quiet >= 6:  # the Welcome screen, steadily, for a while: nothing is restoring
+                    return "welcome"
+                break
+        else:
+            quiet = 0
+        await asyncio.sleep(POLL)
+    return "timeout"
+
+
 async def run(state: State, ip: str, resumed: bool = False) -> None:
     """resumed: the add-on restarted while a move was under way. The backup may already be restoring, so a
     Home Assistant that comes up set up is then the finished move, not someone else's."""
@@ -102,7 +122,7 @@ async def run(state: State, ip: str, resumed: bool = False) -> None:
                 for b in bases:
                     status, steps = await _onboarding(session, b)
                     if await _set_up(session, b, status, steps):
-                        if resumed:
+                        if resumed or state.d["move_in"].get("uploaded"):
                             log("done", f"Your Home Assistant now runs on the cluster at {b}")
                             return
                         log("failed", f"the Home Assistant at {b} is already set up, so it cannot take your backup")
@@ -128,6 +148,8 @@ async def run(state: State, ip: str, resumed: bool = False) -> None:
             deadline = time.time() + WAIT_UPLOAD
             while True:
                 status, text = 0, ""
+                state.d["move_in"]["uploaded"] = True  # from here on, a set-up Home Assistant means the move worked
+                state.save()
                 try:
                     with backup.open("rb") as f:
                         data = aiohttp.FormData()
@@ -141,7 +163,25 @@ async def run(state: State, ip: str, resumed: bool = False) -> None:
                                 break
                             text = (await r.text())[:200]
                 except (TimeoutError, aiohttp.ClientError) as err:
-                    text = f"{type(err).__name__}: {err}"  # it hung up on us mid-upload: still starting, try again
+                    # it hung up on us: either still starting, or it took the backup and is restarting into the
+                    # restore. Wait for it; upload again only if the Welcome screen comes back
+                    text = f"{type(err).__name__}: {err}"
+                    log(
+                        "restoring",
+                        f"the new Home Assistant hung up during the upload ({text.strip()}); waiting for it",
+                    )
+                    what = await _wait_restored(session, bases, time.time() + WAIT_RESTORE)
+                    if what == "done":
+                        log("done", f"Your Home Assistant now runs on the cluster at {base}")
+                        return
+                    if what == "timeout":
+                        log(
+                            "failed",
+                            f"Home Assistant did not come back within {WAIT_RESTORE // 60} minutes; open {base}",
+                        )
+                        return
+                    log("uploading", "the Welcome screen is back: sending the backup again")
+                    continue
                 if (status not in (0, 401, 404) and status < 500) or time.time() > deadline:
                     log("failed", f"the new Home Assistant refused the backup: {status} {text}")
                     return
@@ -156,24 +196,25 @@ async def run(state: State, ip: str, resumed: bool = False) -> None:
                 "restore_database": True,
                 "restore_folders": info.get("folders", []),
             }
-            async with session.post(f"{base}/api/onboarding/backup/restore", json=body) as r:
-                if r.status != 200:
-                    log("failed", f"the restore was refused: {r.status} {(await r.text())[:300]}")
-                    return
+            try:
+                async with session.post(f"{base}/api/onboarding/backup/restore", json=body) as r:
+                    if r.status != 200:
+                        log("failed", f"the restore was refused: {r.status} {(await r.text())[:300]}")
+                        return
+            except (TimeoutError, aiohttp.ClientError):
+                pass  # it restarts into the restore before answering: that is the restore starting
             log("restoring", "the new Home Assistant is restoring your backup and restarting (several minutes)")
             await asyncio.sleep(SETTLE)
-            deadline = time.time() + WAIT_RESTORE
-            while time.time() < deadline:
-                for b in bases:  # the restored Home Assistant may listen on this one's port
-                    status, steps = await _onboarding(session, b)
-                    if await _set_up(session, b, status, steps):
-                        log("done", f"Your Home Assistant now runs on the cluster at {b}")
-                        return
-                await asyncio.sleep(POLL)
-            log(
-                "failed",
-                f"the restore did not finish within {WAIT_RESTORE // 60} minutes; open {base} to see where it is",
-            )
+            what = await _wait_restored(session, bases, time.time() + WAIT_RESTORE)
+            if what == "done":
+                log("done", f"Your Home Assistant now runs on the cluster at {base}")
+            elif what == "welcome":
+                log("failed", f"the restore did not take: {base} shows its Welcome screen again; Try the move again")
+            else:
+                log(
+                    "failed",
+                    f"the restore did not finish within {WAIT_RESTORE // 60} minutes; open {base} to see where it is",
+                )
     except Exception as err:
         _LOGGER.exception("move-in failed")
         log("failed", str(err))
