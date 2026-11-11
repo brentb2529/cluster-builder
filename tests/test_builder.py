@@ -625,3 +625,15 @@ def test_saving_the_form_keeps_assigned_machines(state: State) -> None:
     assert state.netboot_decision("aa:bb:cc:dd:ee:01", "x")[0] == "install"
     state.update_settings({"nodes": [{"name": "pve1"}, {"name": "pve2", "boot_mac": ""}]}, None)
     assert state.settings["nodes"][1]["boot_mac"] == ""  # an explicit empty value does clear it
+
+
+def test_start_over_forgets_which_box_is_which_node(state: State) -> None:
+    """After Start over no machine may get the installer until it is assigned again: an old node that reboots
+    must be told to boot from its disk, not wiped."""
+    state.d["machines"]["aa:bb:cc:dd:ee:01"] = {"first": 1, "last": 1, "count": 1, "from": "x"}
+    assert state.assign_machine("aa:bb:cc:dd:ee:01", "pve1") == ""
+    state.log("pve1", "done", "ready")
+    state.reset_all()
+    assert state.settings["nodes"][0]["boot_mac"] == ""
+    assert state.netboot_decision("aa:bb:cc:dd:ee:01", "x") == ("unknown", None)
+    assert "aa:bb:cc:dd:ee:01" in state.d["machines"]

@@ -367,7 +367,11 @@ class State:
         self.save()
 
     def reset_all(self) -> None:
+        """Forget every machine: the unknown ones and which box is which node, so nothing gets the installer
+        again until someone says so under step 4 (lan_mac is typed under Advanced and stays)."""
         self.d["machines"] = {}
+        for ns in self.settings["nodes"]:
+            ns["boot_mac"] = ""
         for name in list(self.nodes):
             self.reset_node(name)
         self.cluster.update({"created": False, "joining": None, "joining_since": 0, "vm_created": False})

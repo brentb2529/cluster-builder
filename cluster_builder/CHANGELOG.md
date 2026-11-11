@@ -2,6 +2,7 @@
 
 ## 0.2.1
 
+- Fixed: "Start over (forget all machines)" kept which box was which node, so an old node that rebooted after it would have been reinstalled without anyone clicking. It now forgets the assignments too; every machine is listed again and installed only once you say which node it is.
 - Fixed: the move-in reported "Failed: Server disconnected" (or later "already set up") when the new Home
   Assistant restarted into the restore before answering the request; it now waits for the restored Home Assistant
   and reports done, and re-sends the backup only if the Welcome screen comes back.
