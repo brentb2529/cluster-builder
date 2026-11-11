@@ -2,6 +2,12 @@
 
 ## 0.2.1
 
+- Cluster Guard is set up for you: the first node makes Cluster Guard its own Proxmox login (user, role, token) as root
+  and hands it to the add-on, which sets the Cluster Guard integration up in this Home Assistant through the Supervisor
+  before the move-in backup is taken. The restored Home Assistant arrives on the cluster already watching it; the last
+  step is only "shut this machine down". The page says before Build if Cluster Guard is not installed here (HACS).
+- The move-in backup is taken when the VM is up (fresh, and with Cluster Guard in it), not at Build; Build is faster.
+
 - Fixed: the first node reported a VM disk smaller than it made (the Home Assistant OS image is 32 GB and a disk cannot shrink below it); the size now starts at the image's own size and the message says what the VM really got.
 - Step 5 opens the address the move-in actually used (Home Assistant OS 18 serves on port 80) instead of always saying :8123, and no longer repeats "restoring your backup" twice. Step 4 says "No machine has asked to boot yet" only while no machine is assigned.
 - Fixed: "Start over (forget all machines)" kept which box was which node, so an old node that rebooted after it would have been reinstalled without anyone clicking. It now forgets the assignments too; every machine is listed again and installed only once you say which node it is.

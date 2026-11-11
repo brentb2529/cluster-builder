@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import aiohttp
 
-from . import supervisor
+from . import cluster_guard, supervisor
 from .supervisor import BACKUP_FILE
 
 if TYPE_CHECKING:
@@ -101,12 +101,25 @@ async def run(state: State, ip: str, resumed: bool = False) -> None:
     Home Assistant that comes up set up is then the finished move, not someone else's."""
     log = state.move_in_log
     backup = state.downloads / BACKUP_FILE
-    if not backup.exists():
-        log("failed", "there is no move-in backup here: Build again with the move-in option ticked")
-        return
     try:
         timeout = aiohttp.ClientTimeout(total=None, sock_connect=10, sock_read=900)
         async with aiohttp.ClientSession(timeout=timeout) as session:
+            if supervisor.available() and not resumed:
+                # Cluster Guard first, so the backup carries it; then a fresh backup of this Home Assistant
+                if state.d["cluster_guard"].get("phase") != "done":
+                    await cluster_guard.set_up(state, session)
+                log("backup", "taking a fresh backup of this Home Assistant for the move (a few minutes)")
+
+                def _bp(step: str, frac: float) -> None:
+                    log("backup", step)
+
+                state.build["move_in_backup"] = await supervisor.make_backup(
+                    session, state.secrets["move_in_password"], backup, _bp
+                )
+                state.save()
+            if not backup.exists():
+                log("failed", "there is no move-in backup here: tick the move-in option and Try the move again")
+                return
             bases = candidates(ip, await supervisor.core_port(session) if supervisor.available() else None)
             if resumed:
                 log("restoring", f"picking the move up again after a restart: checking the Home Assistant at {ip}")

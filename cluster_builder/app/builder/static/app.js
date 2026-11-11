@@ -196,6 +196,7 @@
     $("#pve-url").textContent = `https://${s.settings.nodes[0].ip || "<node address>"}:8006`;
     form.elements.vm_move_in.disabled = !s.supervisor;
     $("#movein-hint").hidden = !s.supervisor;
+    $("#cg-missing").hidden = !(s.supervisor && s.settings.vm.move_in && s.cluster_guard_installed === false);
     const mi = s.move_in || {};
     const moving = !!(s.settings.vm.move_in && s.supervisor);
     $("#movein").hidden = !moving;
@@ -205,6 +206,11 @@
       $("#movein-phase").textContent = mi.phase ? text : (s.cluster.vm_created ? "Waiting for the first node to report the VM's address" : "Starts by itself once the first node has created the VM");
       $("#movein-msg").textContent = mi.msg || "";
       $("#movein-done").hidden = mi.phase !== "done";
+      const cg = s.cluster_guard || {};
+      const cgText = ((s.cluster_guard_phases || []).find((x) => x[0] === (cg.phase || "")) || ["", cg.phase])[1];
+      $("#cg-line").textContent = cg.phase ? `${cgText}: ${cg.msg || ""}` : "";
+      $("#movein-cg").textContent = cg.phase === "done" ? ", and Cluster Guard watches the cluster from it" : "";
+      $("#movein-cg-manual").textContent = cg.phase === "done" ? "" : " Add the Cluster Guard integration there with a node's address and the root password, once.";
       $("#movein-url").textContent = mi.url || (mi.ip ? (mi.ip.includes(":") ? `http://${mi.ip}` : `http://${mi.ip}:8123`) : "");
       $("#movein-retry").hidden = !(mi.phase === "failed" || (s.cluster.vm_created && !mi.phase));
       if (document.activeElement !== $("#movein-ip") && !$("#movein-ip").value) $("#movein-ip").value = mi.ip || "";

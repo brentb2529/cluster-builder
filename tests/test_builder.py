@@ -639,3 +639,108 @@ def test_start_over_forgets_which_box_is_which_node(state: State) -> None:
     assert state.settings["nodes"][0]["boot_mac"] == ""
     assert state.netboot_decision("aa:bb:cc:dd:ee:01", "x") == ("unknown", None)
     assert "aa:bb:cc:dd:ee:01" in state.d["machines"]
+
+
+class FakeCore:
+    """Home Assistant's config-entries REST API behind the Supervisor proxy, as far as Cluster Guard's flow goes."""
+
+    def __init__(self, installed: bool = True) -> None:
+        self.installed = installed
+        self.steps: list[dict] = []
+        self.deleted: list[str] = []
+        self.entries = [{"entry_id": "old1", "domain": "cluster_guard", "title": "Cluster house"}]
+
+    def app(self) -> web.Application:
+        async def start(request: web.Request) -> web.Response:
+            body = await request.json()
+            if body.get("handler") != "cluster_guard" or not self.installed:
+                return web.json_response({"message": "Invalid handler specified"}, status=400)
+            return web.json_response({"type": "form", "flow_id": "f1", "step_id": "user", "errors": None})
+
+        async def step(request: web.Request) -> web.Response:
+            body = await request.json()
+            self.steps.append(body)
+            nxt = {1: "token", 2: "ha_vm"}.get(len(self.steps))
+            if nxt:
+                return web.json_response({"type": "form", "flow_id": "f1", "step_id": nxt, "errors": None})
+            return web.json_response({"type": "create_entry", "title": "Cluster house", "result": {"entry_id": "new1"}})
+
+        async def drop(request: web.Request) -> web.Response:
+            self.deleted.append("flow " + request.match_info["flow_id"])
+            return web.json_response({})
+
+        async def entries(request: web.Request) -> web.Response:
+            return web.json_response(self.entries)
+
+        async def delete_entry(request: web.Request) -> web.Response:
+            self.deleted.append("entry " + request.match_info["entry_id"])
+            return web.json_response({"require_restart": False})
+
+        app = web.Application()
+        app.router.add_post("/core/api/config/config_entries/flow", start)
+        app.router.add_post("/core/api/config/config_entries/flow/{flow_id}", step)
+        app.router.add_delete("/core/api/config/config_entries/flow/{flow_id}", drop)
+        app.router.add_get("/core/api/config/config_entries/entry", entries)
+        app.router.add_delete("/core/api/config/config_entries/entry/{entry_id}", delete_entry)
+        return app
+
+
+async def test_cluster_guard_is_set_up_with_the_token_the_first_node_made(state: State, sockets, monkeypatch) -> None:
+    from builder import cluster_guard, supervisor
+
+    state.update_settings({"cluster_name": "house"}, None)
+    core = FakeCore()
+    async with TestServer(core.app()) as srv:
+        monkeypatch.setattr(supervisor, "SUP", f"http://{srv.host}:{srv.port}")
+        monkeypatch.setenv("SUPERVISOR_TOKEN", "t")
+        async with aiohttp.ClientSession() as session:
+            assert await cluster_guard.installed(session) is True
+            assert core.deleted == ["flow f1"]  # the probe flow is dropped again
+            assert await cluster_guard.set_up(state, session) is False  # no token yet
+            assert state.d["cluster_guard"]["phase"] == "waiting"
+            state.secrets["cluster_guard"] = {
+                "token_id": "homeassistant@pve!cluster_guard",
+                "secret": "s3",
+                "vmid": "100",
+            }
+            assert await cluster_guard.set_up(state, session) is True
+    assert state.d["cluster_guard"]["phase"] == "done"
+    assert core.deleted == ["flow f1", "entry old1"]  # the entry from the earlier build goes first
+    assert core.steps == [
+        {"host": state.settings["nodes"][0]["ip"], "port": 8006, "method": "token", "verify_ssl": False},
+        {"token_id": "homeassistant@pve!cluster_guard", "token_secret": "s3"},
+        {"ha_vmid": "100"},
+    ]
+
+
+async def test_cluster_guard_missing_is_said_not_fatal(state: State, sockets, monkeypatch) -> None:
+    from builder import cluster_guard, supervisor
+
+    core = FakeCore(installed=False)
+    async with TestServer(core.app()) as srv:
+        monkeypatch.setattr(supervisor, "SUP", f"http://{srv.host}:{srv.port}")
+        monkeypatch.setenv("SUPERVISOR_TOKEN", "t")
+        async with aiohttp.ClientSession() as session:
+            assert await cluster_guard.installed(session) is False
+            state.secrets["cluster_guard"] = {"token_id": "homeassistant@pve!cluster_guard", "secret": "s3"}
+            assert await cluster_guard.set_up(state, session) is False
+    assert state.d["cluster_guard"]["phase"] == "missing"
+
+
+async def test_first_node_hands_cluster_guard_login_to_the_addon(state: State, sockets) -> None:
+    from builder import server as srv_mod
+
+    s1 = state.node_secret("pve1")
+    async with TestClient(TestServer(srv_mod.make_lan_app(state))) as c:
+        r = await c.post(
+            f"/cluster_guard/pve1/{s1}",
+            json={"token_id": "homeassistant@pve!cluster_guard", "secret": "s3", "vmid": "100"},
+        )
+        assert r.status == 200
+        r = await c.post("/cluster_guard/pve1/wrong", json={"token_id": "x@pve!y", "secret": "z"})
+        assert r.status == 403
+    assert state.secrets["cluster_guard"]["secret"] == "s3"
+    assert "s3" not in json.dumps(state.public())  # never on the page
+    assert state.nodes["pve1"]["phase"] == "cluster_guard"
+    state.reset_all()
+    assert "cluster_guard" not in state.secrets and state.d["cluster_guard"]["phase"] == ""

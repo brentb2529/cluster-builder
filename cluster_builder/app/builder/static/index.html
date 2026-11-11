@@ -27,8 +27,8 @@
         <label>Root password for the nodes <input name="password" type="password" placeholder="(kept from last time)" minlength="8"></label>
         <label>Again <input name="password2" type="password" minlength="8"></label>
       </div>
-      <p class="hint">The root password is what you will type once into Cluster Guard later, and into any node's web page
-        (https://&lt;node address&gt;:8006). It is stored here only as a hash.</p>
+      <p class="hint">The root password is for the nodes' own web pages (https://&lt;node address&gt;:8006). Cluster Guard never
+        needs it: the first node makes Cluster Guard its own login and this add-on sets it up here. It is stored here only as a hash.</p>
 
       <h3>How the machines get the installer</h3>
       <div class="grid">
@@ -52,9 +52,12 @@
       </div>
       <p class="hint" id="vm-size">Sized by itself: memory half of the first node's (2 to 8 GB), CPU cores half of its cores, and
         <span id="vm-disk-auto">at least 32 GB</span> of disk. Nothing to work out; fixed sizes can be set under Advanced.</p>
-      <p class="hint" id="movein-hint">With the move ticked, Build first takes a full backup of this Home Assistant (everything but this add-on).
+      <p class="hint" id="movein-hint">With the move ticked, the add-on sets Cluster Guard up in this Home Assistant as soon as
+        the first node has made it a login, then takes a full backup of this Home Assistant (everything but this add-on).
         When the new VM boots its Welcome screen, the add-on restores that backup into it, and step 5 tells you
         when to shut this machine down. Without it, the new Home Assistant shows its Welcome screen for a manual restore.</p>
+      <p id="cg-missing" class="error" hidden>Cluster Guard is not installed in this Home Assistant. Install it from HACS and
+        restart Home Assistant before you Build, so it moves onto the cluster with you and watches it from the first day.</p>
       <p class="hint">The MAC address is already filled in: the add-on made it up for the new Home Assistant VM, which has no
         network card of its own yet. It is not from one of the new machines and not from this Home Assistant
         (<span id="host-where">this machine</span>): nothing to look up or type. Give it a DHCP
@@ -164,9 +167,9 @@
     <h2><span class="num">5</span> Move in</h2>
     <div id="movein" hidden>
       <p><b id="movein-phase"></b> <span id="movein-msg" class="msg"></span></p>
-      <p id="movein-done" class="done-box" hidden>Your Home Assistant is on the cluster now. <b>Shut this machine down</b> so the two do not
-        both talk to your devices, then open <code id="movein-url"></code>. Add the <b>Cluster Guard</b> integration there with a node's
-        address and the root password, once.</p>
+      <p id="cg-line" class="msg"></p>
+      <p id="movein-done" class="done-box" hidden>Your Home Assistant is on the cluster now<span id="movein-cg"></span>. <b>Shut this machine
+        down</b> so the two do not both talk to your devices, then open <code id="movein-url"></code>.<span id="movein-cg-manual"></span></p>
       <div id="movein-retry" class="actions" hidden>
         <label>VM address <input id="movein-ip" placeholder="for example 192.168.1.50"></label>
         <button id="movein-go">Try the move again</button>

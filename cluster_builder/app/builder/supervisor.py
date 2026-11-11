@@ -46,6 +46,17 @@ async def _api(session: aiohttp.ClientSession, method: str, path: str, **kw: Any
         return body.get("data", {}) if isinstance(body, dict) else {}
 
 
+async def core_api(session: aiohttp.ClientSession, method: str, path: str, **kw: Any) -> tuple[int, Any]:
+    """A call to this Home Assistant's own REST API through the Supervisor's proxy (homeassistant_api: true).
+    Core answers for itself, so this returns (status, body) instead of raising on 4xx."""
+    async with session.request(method, SUP + path, headers=_headers(), **kw) as r:
+        text = await r.text()
+        try:
+            return r.status, json.loads(text) if text else {}
+        except ValueError:
+            return r.status, text[:300]
+
+
 async def core_port(session: aiohttp.ClientSession) -> int | None:
     """The port this Home Assistant listens on (/core/info is open to every add-on role); a restored copy keeps it."""
     try:

@@ -39,8 +39,8 @@ the one-minute copies. The page shows every node's progress.
    Assistant VM. A machine you never assign, and every node after its install, is told to start from its own disk.
 6. When all three say **Done**, open `https://<first node>:8006` (user `root`), see three nodes, then
    open `http://homeassistant.local:8123` (plain `http://homeassistant.local` on Home
-   Assistant OS 18) and restore your backup on the Welcome screen (or let the move-in do it, step 5). Add the
-   Cluster Guard integration in the restored Home Assistant.
+   Assistant OS 18) and restore your backup on the Welcome screen (or let the move-in do it, step 5, which brings
+   Cluster Guard along already set up; after a manual restore add Cluster Guard yourself).
 
 The stick erases whatever machine boots from it. It only answers machines this page has not installed
 yet, and a machine that was already installed is refused until you press *Allow reinstall* on it.
@@ -48,10 +48,14 @@ Keep it out of machines you care about anyway.
 
 ## Moving this Home Assistant onto the cluster
 
-Tick **Move this Home Assistant onto it** (step 1, on by default on Home Assistant OS). Build then first takes a
-full backup of this Home Assistant (everything except this add-on), encrypted with a one-time key the add-on
-keeps. When the first node has created the VM and Home Assistant OS shows its Welcome screen, the add-on sends
-that backup in through the Welcome screen's own restore and waits for the restart. Step 5 then says **shut this
+Tick **Move this Home Assistant onto it** (step 1, on by default on Home Assistant OS). When the first node has
+created the VM it also makes Cluster Guard its own Proxmox login (user `homeassistant@pve`, role `ClusterGuard`,
+token `cluster_guard`: exactly what Cluster Guard would make from the root password) and hands it to the add-on,
+which sets the Cluster Guard integration up in this Home Assistant through the Supervisor. Install Cluster Guard
+from HACS before you Build; the page says so if it is missing. The add-on then takes a full backup of this Home
+Assistant (everything except this add-on, Cluster Guard included), encrypted with a one-time key the add-on
+keeps, and when Home Assistant OS shows its Welcome screen in the VM, sends that backup in through the Welcome
+screen's own restore and waits for the restart. Step 5 then says **shut this
 machine down**: for a few minutes two identical Home Assistants exist, and only one of them should talk to your
 devices. USB radios do not follow a backup; that is what Radio Guard's restore onto the new adapters is for.
 

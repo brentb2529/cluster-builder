@@ -208,6 +208,37 @@ if [ "$VM_ENABLED" = 1 ]; then
     ha-manager config 2>/dev/null | grep -q "^vm:$VMID" || ha-manager add "vm:$VMID" --state started --max_restart 1 --max_relocate 1
     ha-manager set "vm:$VMID" --state started
     say vm_created "VM $VMID ($VM_NAME) is a failover resource; MAC $VM_MAC${VM_SIZE:+; $VM_SIZE}"
+    # Cluster Guard's own login: the user, role and token it would otherwise make from the root password typed
+    # into Home Assistant. Made here as root and handed to the add-on, so nobody types that password anywhere.
+    # The privileges are Cluster Guard's CG_PRIVS (api.py); keep them in step.
+    cg_login() {
+      local privs json host
+      privs="Sys.Audit,VM.Audit,VM.GuestAgent.Audit,Datastore.Audit,Pool.Audit,SDN.Audit,Mapping.Audit,VM.Migrate,VM.Replicate,Sys.Console,Datastore.AllocateSpace"
+      if pveum role list --output-format json 2>/dev/null | grep -q '"roleid":"ClusterGuard"'; then
+        pveum role modify ClusterGuard -privs "$privs"
+      else
+        pveum role add ClusterGuard -privs "$privs"
+      fi
+      pveum user list --output-format json 2>/dev/null | grep -q '"userid":"homeassistant@pve"' \
+        || pveum user add homeassistant@pve -comment "Home Assistant Cluster Guard"
+      pveum acl modify / -user homeassistant@pve -role ClusterGuard
+      pveum user token remove homeassistant@pve cluster_guard >/dev/null 2>&1 || true
+      json=$(pveum user token add homeassistant@pve cluster_guard -privsep 0 --output-format json)
+      host=$(ip -4 -o addr show "$VM_BRIDGE" | awk '{print $4}' | cut -d/ -f1 | head -1)
+      python3 - "$json" "$host" "$VMID" > /tmp/cluster-guard.json <<'PY'
+import json, sys
+t = json.loads(sys.argv[1])
+print(json.dumps({"token_id": t.get("full-tokenid") or "homeassistant@pve!cluster_guard", "secret": t["value"],
+                  "host": sys.argv[2], "vmid": sys.argv[3]}))
+PY
+      curl -fsS -m 15 --retry 5 --retry-delay 5 -X POST -H 'Content-Type: application/json' \
+        --data-binary @/tmp/cluster-guard.json "$B/cluster_guard/$N/$S" >/dev/null
+      rm -f /tmp/cluster-guard.json
+    }
+    if ! cg_login; then
+      rm -f /tmp/cluster-guard.json
+      say vm_created "could not make Cluster Guard's login here (add Cluster Guard by hand later with the root password); going on"
+    fi
     if [ "${MOVE_IN:-0}" = 1 ]; then
       # the add-on restores the backup through the new Home Assistant's Welcome screen; it needs the VM's address.
       # Home Assistant OS runs the QEMU guest agent; until it is up, look the VM's MAC up on the bridge instead.

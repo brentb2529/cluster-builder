@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from . import supervisor
+from . import cluster_guard, supervisor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,6 +41,7 @@ PHASES = [
     ("joined", "Joined the cluster"),
     ("image", "Downloading the Home Assistant OS image"),
     ("vm_created", "Home Assistant VM created and protected"),
+    ("cluster_guard", "Cluster Guard's own login made for Home Assistant"),
     ("vm_wait", "Waiting for the Home Assistant VM to come up on the network"),
     ("vm_ip", "Home Assistant VM is on the network"),
     ("replicating", "Copy of the Home Assistant VM set up on this node"),
@@ -51,6 +52,7 @@ PHASE_TEXT = dict(PHASES)
 MOVE_IN_PHASES = [
     ("", "Not started"),
     ("waiting_vm", "Waiting for the first node to report the VM's address"),
+    ("backup", "Taking a backup of this Home Assistant"),
     ("waiting_ha", "Waiting for Home Assistant OS to boot in the VM"),
     ("uploading", "Sending your backup to the new Home Assistant"),
     ("restoring", "The new Home Assistant is restoring your backup"),
@@ -162,6 +164,7 @@ class State:
             },
             "cluster": {"created": False, "joining": None, "vm_created": False},
             "move_in": {"phase": "", "msg": "", "ip": "", "updated": 0},
+            "cluster_guard": {"phase": "", "msg": "", "updated": 0},
         }
         if self.path.exists():
             try:
@@ -172,6 +175,7 @@ class State:
                 # new settings keys (this version) under older saved settings
                 self.d["settings"]["vm"] = {**default_settings()["vm"], **self.d["settings"].get("vm", {})}
                 self.d["move_in"] = {**{"phase": "", "msg": "", "ip": "", "updated": 0}, **self.d.get("move_in", {})}
+                self.d["cluster_guard"] = {**{"phase": "", "msg": "", "updated": 0}, **self.d.get("cluster_guard", {})}
             except Exception:
                 _LOGGER.exception("state.json unreadable; starting fresh")
         s = self.d["secrets"]
@@ -376,6 +380,8 @@ class State:
             self.reset_node(name)
         self.cluster.update({"created": False, "joining": None, "joining_since": 0, "vm_created": False})
         self.d["move_in"] = {"phase": "", "msg": "", "ip": "", "updated": 0}
+        self.d["cluster_guard"] = {"phase": "", "msg": "", "updated": 0}
+        self.secrets.pop("cluster_guard", None)  # the next cluster makes a new one
         self.save()
 
     def move_in_log(self, phase: str, msg: str = "") -> None:
@@ -487,6 +493,8 @@ class State:
         out["phases"] = PHASES
         out["ssh_public"] = self.secrets.get("ssh_public", "")
         out["move_in_phases"] = MOVE_IN_PHASES
+        out["cluster_guard_phases"] = cluster_guard.PHASES
+        out["cluster_guard_installed"] = self.build.get("cluster_guard_installed")
         out["supervisor"] = supervisor.available()
         out["iso_name"] = "cluster-builder.iso"
         out["iso_token"] = self.secrets["answer_token"]

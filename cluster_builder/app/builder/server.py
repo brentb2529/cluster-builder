@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 import aiohttp
 from aiohttp import web
 
-from . import answers, build, move_in, netboot, proxydhcp, tftp
+from . import answers, build, cluster_guard, move_in, netboot, proxydhcp, supervisor, tftp
 from .state import State
 
 _LOGGER = logging.getLogger(__name__)
@@ -365,6 +365,44 @@ async def lan_installed(request: web.Request) -> web.Response:
     return web.Response(text="ok")
 
 
+async def lan_cluster_guard(request: web.Request) -> web.Response:
+    """The first node made Cluster Guard its own Proxmox user and token: keep them (secrets, never shown) and
+    set Cluster Guard up in this Home Assistant right away."""
+    name = _node_or_403(request)
+    state = _state(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    token_id, secret = str(body.get("token_id", "")).strip(), str(body.get("secret", "")).strip()
+    if not token_id or not secret:
+        raise web.HTTPBadRequest(text="token_id and secret needed")
+    state.secrets["cluster_guard"] = {
+        "token_id": token_id,
+        "secret": secret,
+        "host": str(body.get("host", "")).strip(),
+        "vmid": str(body.get("vmid", "")).strip(),
+        "node": name,
+    }
+    state.log(name, "cluster_guard", f"Cluster Guard's own login ({token_id}) made on {name}; no root password needed")
+    if supervisor.available():
+        state.cluster_guard_task = asyncio.create_task(_set_up_cluster_guard(state))  # type: ignore[attr-defined]
+    return web.Response(text="ok")
+
+
+async def _set_up_cluster_guard(state: State) -> None:
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=300)) as session:
+        await cluster_guard.set_up(state, session)
+
+
+async def _note_cluster_guard_installed(state: State) -> None:
+    if not supervisor.available():
+        return
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as session:
+        state.build["cluster_guard_installed"] = await cluster_guard.installed(session)
+        state.save()
+
+
 async def lan_status(request: web.Request) -> web.Response:
     name = _node_or_403(request)
     state = _state(request)
@@ -458,6 +496,7 @@ def make_lan_app(state: State) -> web.Application:
     app.router.add_get("/env/{node}/{secret}", lan_env)
     app.router.add_post("/installed/{node}/{secret}", lan_installed)
     app.router.add_post("/status/{node}/{secret}", lan_status)
+    app.router.add_post("/cluster_guard/{node}/{secret}", lan_cluster_guard)
     app.router.add_get("/join/{node}/{secret}", lan_join)
     app.router.add_get("/boot/{mac}", lan_boot)
     app.router.add_get("/files/{token}/{name}", lan_file)
@@ -495,6 +534,7 @@ async def serve(state: State, ui_port: int = 8099, lan_port: int = 8808, dev: bo
         state.dhcp_error = str(err)  # type: ignore[attr-defined]
         _LOGGER.warning("ProxyDHCP port not available (%s): the router must point network boot at this add-on", err)
     resume_move_in(state)  # an add-on restart (update, rebuild) must not strand a move-in half way
+    asyncio.create_task(_note_cluster_guard_installed(state))  # noqa: RUF006 - fire and forget, result lands in state
     try:
         while True:
             await asyncio.sleep(3600)

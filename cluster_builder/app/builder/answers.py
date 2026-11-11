@@ -7,6 +7,7 @@ import shlex
 from pathlib import Path
 from typing import Any
 
+from . import supervisor
 from .state import State
 
 TEMPLATE = Path(__file__).with_name("firstboot.sh").read_text()
@@ -118,7 +119,7 @@ def env_for(state: State, name: str) -> str:
         "VM_MAC": vm["mac"],
         "VM_QM_ARGS": vm["qm_args"],
         "IMAGE_URL": state.build.get("image_served_url", ""),
-        "MOVE_IN": "1" if vm.get("move_in") and state.build.get("move_in_backup") else "0",
+        "MOVE_IN": "1" if vm.get("move_in") and supervisor.available() else "0",
         "EXTRA_B64": base64.b64encode(s.get("extra_firstboot", "").encode()).decode(),
     }
     return "".join(f"{k}={shlex.quote(str(v))}\n" for k, v in env.items())
