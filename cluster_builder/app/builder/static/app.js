@@ -104,12 +104,17 @@
       const n = s.nodes_state[ns.name] || {};
       const cls = n.phase === "done" ? "done" : n.phase === "failed" ? "failed" : active.has(n.phase) ? "active" : "";
       const m = n.machine;
-      // an installer that fails stays silent (the webhook only fires on success): say so after ten minutes
-      const stale = active.has(n.phase) && n.phase !== "installed" && s.now - (n.updated || 0) > (n.phase === "installing" ? 600 : 1800);
-      return `<div class="node ${cls}">
+      // a machine that fails stays silent (the installer only reports success, a crashed box reports nothing):
+      // say what probably happened, by phase, once it has been quiet too long
+      const quiet = s.now - (n.updated || 0);
+      const stuck = !active.has(n.phase) || n.phase === "installed" ? "" :
+        n.phase === "netboot" && quiet > 300 ? `It took the installer ${ago(n.updated)} and never asked for its answers. Look at its screen: a kernel panic or a restart loop means the box has too little memory for the network install (8 GB needed); a normal Proxmox login means it started from its disk instead (put network boot first in its firmware). Fix that and turn it on again: it gets the installer again by itself.` :
+        n.phase === "installing" && quiet > 600 ? `The installer stopped reporting ${ago(n.updated)}. Look at the machine's screen for the error; after fixing it, turn the box on again and it installs again.` :
+        quiet > 1800 ? `No news ${ago(n.updated)}: check the machine's screen.` : "";
+      return `<div class="node ${cls} ${stuck ? "stuck" : ""}">
         <h4><span>${esc(ns.name)} <small class="msg">${esc(ns.ip)}</small></span><small class="msg">${ago(n.updated)}</small></h4>
         <span class="phase">${esc(phaseText(n.phase))}</span>
-        <span class="msg">${esc(n.msg)}${stale ? " (no news for a while: check the machine's screen)" : ""}</span>
+        <span class="msg">${esc(n.msg)}</span>${stuck ? `<p class="error">${esc(stuck)}</p>` : ""}
         ${m ? `<div class="machine">${esc([m.vendor, m.product, m.serial].filter(Boolean).join(" ") || m.macs[0])}</div>` : ns.boot_mac ? `<div class="machine">boots from the network as <span class="mono">${esc(ns.boot_mac)}</span></div>` : ""}
         <details><summary class="msg">log</summary><pre>${(n.log || []).slice(-40).map((l) => `${new Date(l[0] * 1000).toLocaleTimeString()} ${esc(l[1])} ${esc(l[2])}`).join("\n")}</pre></details>
         <div class="tools">

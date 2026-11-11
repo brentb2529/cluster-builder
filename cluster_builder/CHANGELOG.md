@@ -2,6 +2,9 @@
 
 ## 0.2.1
 
+- A node that took the network installer and went silent (no answers request within 5 min) is called out on its
+  card with the likely cause (too little memory, or it booted from disk) and what to do; same for an installer that
+  stops reporting.
 - Docs: a network-installed box needs 8 GB of memory, not 4 (the installer image lives in memory; 4 GB panics).
 - Page: says whose MAC address the VM field is (made up for the new VM, nothing to look up) and shows this Home
   Assistant's own address and MAC next to it.
