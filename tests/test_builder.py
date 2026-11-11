@@ -237,10 +237,17 @@ async def test_move_in_handles_the_landing_page_and_a_gone_onboarding_api(state:
     welcome.landing = 2
     welcome.busy = 2
     welcome.gone_when_done = True
+    seen: list[str] = []
+    orig = state.move_in_log
+    monkeypatch.setattr(state, "move_in_log", lambda phase, msg="": (seen.append(msg), orig(phase, msg)))
     async with TestServer(welcome.app()) as srv:
         await move_in.run(state, f"{srv.host}:{srv.port}")
     assert state.d["move_in"]["phase"] == "done", state.d["move_in"]
     assert welcome.restore is not None
+    # while the landing page answered, the page said what the wait is (not "a few minutes" for an hour)
+    assert any("downloading Home Assistant itself" in m for m in seen), seen
+    assert "waited 0 min" not in " ".join(seen)
+    assert "; waited 7 min so far" in move_in._waiting_msg("1.2.3.4", 0, 7 * 60 + 5)
 
     # an onboarded HA 2026 (404 on the onboarding API, frontend manifest there) is "already set up"
     async with TestServer(welcome.app()) as srv:

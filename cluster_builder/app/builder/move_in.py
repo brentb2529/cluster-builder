@@ -76,6 +76,22 @@ async def _set_up(session: aiohttp.ClientSession, base: str, status: int, steps:
     return status == 404 and await _core_up(session, base)
 
 
+def _waiting_msg(ip: str, answered: int, waited: float) -> str:
+    """What the page says while the new Home Assistant is not ready: what answers at the VM's address tells
+    where its first boot is, so a long wait is explained rather than "a few minutes" for an hour."""
+    if answered == 401:  # HA OS's landing page, shown while Home Assistant itself is being downloaded
+        what = (
+            f"Home Assistant OS is up at {ip} and is downloading Home Assistant itself before its first start "
+            "(about 1 GB: a few minutes on a fast line, much longer on a slow one)"
+        )
+    elif answered:  # Core is starting: it answers, but its onboarding API is not registered yet
+        what = f"Home Assistant is starting at {ip} (its first start takes a few minutes)"
+    else:
+        what = f"waiting for Home Assistant OS to come up at {ip} (its first boot takes a few minutes)"
+    minutes = int(waited // 60)
+    return f"{what}; waited {minutes} min so far" if minutes >= 2 else what
+
+
 async def _wait_restored(session: aiohttp.ClientSession, bases: list[str], deadline: float) -> str:
     """After a restore was sent: "done" once a set-up Home Assistant answers, "welcome" if the onboarding screen
     is back instead (the restore did not take), "timeout" otherwise."""
@@ -131,9 +147,12 @@ async def run(state: State, ip: str, resumed: bool = False) -> None:
                 )
                 deadline = time.time() + WAIT_HA
             base = ""
+            started = time.time()
             while not base:
+                answered = 0
                 for b in bases:
                     status, steps = await _onboarding(session, b)
+                    answered = answered or status
                     if await _set_up(session, b, status, steps):
                         if resumed or state.d["move_in"].get("uploaded"):
                             state.d["move_in"]["url"] = b
@@ -159,6 +178,10 @@ async def run(state: State, ip: str, resumed: bool = False) -> None:
                         f"Home Assistant did not answer at {ip} within {(deadline and WAIT_RESTORE if resumed else WAIT_HA) // 60} minutes",
                     )
                     return
+                if not resumed:
+                    msg = _waiting_msg(ip, answered, time.time() - started)
+                    if msg != state.d["move_in"].get("msg"):
+                        log("waiting_ha", msg)
                 await asyncio.sleep(POLL)
 
             size_mb = backup.stat().st_size / 1e6

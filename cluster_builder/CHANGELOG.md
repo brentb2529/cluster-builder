@@ -2,6 +2,9 @@
 
 ## 0.2.1
 
+- While the move-in waits for the new Home Assistant, step 5 says what it sees at the VM's address: nothing yet,
+  Home Assistant OS's landing page (it is downloading Home Assistant itself, about 1 GB, slow on a slow line), or
+  Home Assistant starting; with the minutes waited. It used to say "takes a few minutes" for up to an hour.
 - Cluster Guard is set up for you: the first node makes Cluster Guard its own Proxmox login (user, role, token) as root
   and hands it to the add-on, which sets the Cluster Guard integration up in this Home Assistant through the Supervisor
   before the move-in backup is taken. The restored Home Assistant arrives on the cluster already watching it; the last
