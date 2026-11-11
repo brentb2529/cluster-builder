@@ -18,8 +18,8 @@ fail() {  # what went wrong, with the last lines the failing command printed (th
   say failed "$1${why:+ -- $why}"
   # turning the box on again reruns the first boot (with the add-on's current script), as the page tells the user
   mkdir -p /var/lib/proxmox-first-boot
-  curl -fsS -m 30 "$B/firstboot/$N/$S" -o /var/lib/proxmox-first-boot/pending-first-boot-setup 2>/dev/null \
-    && chmod +x /var/lib/proxmox-first-boot/pending-first-boot-setup || true
+  printf '#!/bin/bash\n# Cluster Builder: rerun the first boot with the add-on'"'"'s current script\ncurl -fsS -m 60 --retry 10 --retry-delay 15 "%s" | bash\n' \
+    "$B/firstboot/$N/$S" > /var/lib/proxmox-first-boot/pending-first-boot-setup && chmod +x /var/lib/proxmox-first-boot/pending-first-boot-setup || true
   exit 1
 }
 trap 'fail "line $LINENO: $BASH_COMMAND"' ERR
@@ -179,11 +179,23 @@ if [ "$VM_ENABLED" = 1 ]; then
       [ "$POOL_GB" -gt 0 ] && [ "$VM_DISK_GB" -gt $((POOL_GB / 2)) ] && VM_DISK_GB=$((POOL_GB / 2))
       VM_SIZE="${VM_MEMORY} MB memory, ${VM_CORES} cores, ${VM_DISK_GB} GB disk (this node: ${NODE_MB} MB, ${NODE_CORES} cores, ${POOL_GB} GB free)"
       say image "sizing the VM: $VM_SIZE"
-      # shellcheck disable=SC2086
-      qm create "$VMID" --name "$VM_NAME" --ostype l26 --memory "$VM_MEMORY" --cores "$VM_CORES" $VM_QM_ARGS \
-        --bios ovmf --efidisk0 local-zfs:1,efitype=4m,pre-enrolled-keys=0 --scsihw virtio-scsi-single \
-        --scsi0 "local-zfs:0,import-from=$IMG,discard=on,ssd=1" --boot order=scsi0 \
-        --net0 "virtio=$VM_MAC,bridge=$VM_BRIDGE" --agent enabled=1 --onboot 1 --tablet 0
+      # the other nodes join while this runs, and every join restarts the cluster filesystem here for a moment
+      # ("cluster not ready - no quorum?"): wait for quorum and try again, up to ten times
+      created=0
+      for try in $(seq 1 10); do
+        wait_quorum || true
+        # shellcheck disable=SC2086
+        if qm create "$VMID" --name "$VM_NAME" --ostype l26 --memory "$VM_MEMORY" --cores "$VM_CORES" $VM_QM_ARGS \
+          --bios ovmf --efidisk0 local-zfs:1,efitype=4m,pre-enrolled-keys=0 --scsihw virtio-scsi-single \
+          --scsi0 "local-zfs:0,import-from=$IMG,discard=on,ssd=1" --boot order=scsi0 \
+          --net0 "virtio=$VM_MAC,bridge=$VM_BRIDGE" --agent enabled=1 --onboot 1 --tablet 0; then
+          created=1; break
+        fi
+        echo "VM creation attempt $try failed (a node joining?), trying again in 15 s"
+        qm destroy "$VMID" --purge >/dev/null 2>&1 || true
+        sleep 15
+      done
+      [ "$created" = 1 ] || fail "could not create the Home Assistant VM after ten tries"
       qm resize "$VMID" scsi0 "${VM_DISK_GB}G" || true
       rm -f "$IMG"
     fi
