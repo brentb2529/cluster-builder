@@ -125,7 +125,12 @@ async def run(state: State, ip: str, resumed: bool = False) -> None:
                         if resumed or state.d["move_in"].get("uploaded"):
                             log("done", f"Your Home Assistant now runs on the cluster at {b}")
                             return
-                        log("failed", f"the Home Assistant at {b} is already set up, so it cannot take your backup")
+                        log(
+                            "failed",
+                            f"the Home Assistant at {b} is already set up, so it cannot take your backup. If it was "
+                            "restoring your backup the last time this page looked, that is your move finished: open "
+                            f"{b} and check. Otherwise it was set up by hand.",
+                        )
                         return
                     if status == 200 and isinstance(steps, list):
                         base = b
