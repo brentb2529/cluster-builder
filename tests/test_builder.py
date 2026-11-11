@@ -215,6 +215,11 @@ async def test_move_in_restores_through_the_welcome_screen(state: State, sockets
     welcome.user_done = True
     async with TestServer(welcome.app()) as srv:
         await move_in.run(state, f"{srv.host}:{srv.port}")
+        # a second run meets the restored, set-up Home Assistant: that is the move finished, not a refusal...
+        assert state.d["move_in"]["phase"] == "done", state.d["move_in"]
+        # ...unless nothing was ever uploaded by this move (someone set it up by hand)
+        state.d["move_in"]["uploaded"] = False
+        await move_in.run(state, f"{srv.host}:{srv.port}")
     assert state.d["move_in"]["phase"] == "failed" and "already set up" in state.d["move_in"]["msg"]
 
 
@@ -237,6 +242,11 @@ async def test_move_in_handles_the_landing_page_and_a_gone_onboarding_api(state:
 
     # an onboarded HA 2026 (404 on the onboarding API, frontend manifest there) is "already set up"
     async with TestServer(welcome.app()) as srv:
+        await move_in.run(state, f"{srv.host}:{srv.port}")
+        # a second run meets the restored, set-up Home Assistant: that is the move finished, not a refusal...
+        assert state.d["move_in"]["phase"] == "done", state.d["move_in"]
+        # ...unless nothing was ever uploaded by this move (someone set it up by hand)
+        state.d["move_in"]["uploaded"] = False
         await move_in.run(state, f"{srv.host}:{srv.port}")
     assert state.d["move_in"]["phase"] == "failed" and "already set up" in state.d["move_in"]["msg"]
 
