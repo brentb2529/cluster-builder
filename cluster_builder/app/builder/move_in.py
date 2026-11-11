@@ -84,6 +84,16 @@ def _frozen(text: str) -> bool:
     return "freeze" in t or "frozen" in t or "blocked from execution" in t or "busy" in t
 
 
+def _what_answered(so_far: int, status: int) -> int:
+    """The status that says what the VM is doing: the landing page's 401 wins, and the :8123 redirect to :80
+    (a 3xx) says nothing about Core."""
+    if status == 401 or so_far == 401:
+        return 401
+    if status and not 300 <= status < 400 and not so_far:
+        return status
+    return so_far
+
+
 def _waiting_msg(ip: str, answered: int, waited: float) -> str:
     """What the page says while the new Home Assistant is not ready: what answers at the VM's address tells
     where its first boot is, so a long wait is explained rather than "a few minutes" for an hour."""
@@ -160,7 +170,7 @@ async def run(state: State, ip: str, resumed: bool = False) -> None:
                 answered = 0
                 for b in bases:
                     status, steps = await _onboarding(session, b)
-                    answered = answered or status
+                    answered = _what_answered(answered, status)
                     if await _set_up(session, b, status, steps):
                         if resumed or state.d["move_in"].get("uploaded"):
                             state.d["move_in"]["url"] = b

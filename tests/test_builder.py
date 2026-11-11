@@ -258,10 +258,16 @@ async def test_move_in_handles_the_landing_page_and_a_gone_onboarding_api(state:
     assert welcome.restore is not None
     # while the landing page answered, the page said what the wait is (not "a few minutes" for an hour)
     assert any("downloading Home Assistant itself" in m for m in seen), seen
+    assert not any("Home Assistant is starting" in m for m in seen), seen  # the landing page is not Core starting
     assert any("frozen for a snapshot" in m for m in seen), seen
     assert welcome.frozen == 0
     assert "waited 0 min" not in " ".join(seen)
     assert "; waited 7 min so far" in move_in._waiting_msg("1.2.3.4", 0, 7 * 60 + 5)
+    # :8123 redirects to :80 (302) while :80 shows the landing page (401): that is the landing page, not Core
+    assert move_in._what_answered(move_in._what_answered(0, 302), 401) == 401
+    assert move_in._what_answered(move_in._what_answered(0, 401), 302) == 401
+    assert move_in._what_answered(move_in._what_answered(0, 302), 404) == 404
+    assert move_in._what_answered(move_in._what_answered(0, 302), 0) == 0
 
     # an onboarded HA 2026 (404 on the onboarding API, frontend manifest there) is "already set up"
     async with TestServer(welcome.app()) as srv:
