@@ -2,6 +2,8 @@
 
 ## 0.2.1
 
+- A machine that asks to boot but is not assigned yet keeps asking for half an hour (was ten minutes) before it
+  starts from its own disk; an empty box that gave up lands in its firmware menu and must be turned on again.
 - The replication jobs are made with `skip-freeze-fs`: every minute's snapshot no longer freezes the Home Assistant
   VM's filesystems through the guest agent. Home Assistant OS's agent hook turned each of those into a freeze of the
   Supervisor's backup manager, which stalled its first-boot download of Home Assistant and refused backups asked

@@ -21,7 +21,9 @@ LOADERS = {  # what the router's "boot file name" may point at -> file in the ip
     "snponly.efi": "snponly.efi",
     "undionly.kpxe": "undionly.kpxe",  # legacy BIOS
 }
-UNKNOWN_TRIES = 40  # x 15 s: a machine nobody assigns gives up after ten minutes
+UNKNOWN_TRIES = (
+    120  # x 15 s: a machine nobody assigns gives up after half an hour (an empty box then lands in its firmware)
+)
 DEFAULT_CMDLINE = "ro ramdisk_size=16777216 rw quiet splash=silent proxmox-start-auto-installer"
 
 
@@ -100,7 +102,10 @@ def boot_script(state: State, mac: str, tries: int, remote: str) -> str:
 
 def _again(base: str, mac: str, tries: int, why: str) -> str:
     if tries >= UNKNOWN_TRIES:
-        return f"#!ipxe\necho Cluster Builder: {why}; giving up, starting from disk\nsleep 3\nexit\n"
+        return (
+            f"#!ipxe\necho Cluster Builder: {why}; giving up after half an hour, starting from its own disk.\n"
+            "echo If this box is one of your nodes, assign it on the page and turn it on again.\nsleep 5\nexit\n"
+        )
     return (
         "#!ipxe\n"
         f"echo Cluster Builder: {why}\n"
